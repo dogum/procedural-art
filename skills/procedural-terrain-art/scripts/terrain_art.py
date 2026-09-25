@@ -72,7 +72,8 @@ def analyse_shape(dem, summit, peak_m, view_dir, fetched_r, kx=None):
       rough   std of the 1 km high-pass on the 1..4 x r_half ring / height   (cone ~0.012, alps ~0.05)
       above   95th pct of the 3..20 km ring relative to the peak (> 0 = the target is below the
               surrounding high ground, as for a butte inside a canyon)
-    Scores in 0..1: horn (steep and crowded in front), rough (alpine texture), canyon (target below plateau).
+    Scores in 0..1: horn (steep and crowded in front), rough (alpine texture), canyon (target below plateau),
+    shield (broad gentle dome).
     Suggested values: base_m, top_m (height that maps to the reference 4.3), extent_factor (x the
     legacy 10.5 x height rule), relief, spacing (x 0.375), smooth (extra, normalised units), camh, snowline_m.
     Cones score 0 on everything, so their defaults are exactly the legacy ones.
@@ -113,6 +114,7 @@ def analyse_shape(dem, summit, peak_m, view_dir, fetched_r, kx=None):
 
     rough_s = _smooth01(rough, 0.02, 0.04)
     canyon = _smooth01(above, 0.1, 0.25)
+    shield = _smooth01(0.5 - steep, 0.0, 0.12)      # broad, gentle dome (Mauna Kea): its far flanks are dense flat rows
     # local base in the sector facing the viewer (what actually sits in front of the peak)
     vb = math.atan2(-view_dir[0], -view_dir[1])                    # compass bearing summit -> viewer
     dang = np.angle(np.exp(1j * (A - vb)))
@@ -124,7 +126,7 @@ def analyse_shape(dem, summit, peak_m, view_dir, fetched_r, kx=None):
     horn = _smooth01(steep, 1.0, 1.4) * _smooth01(front, 0.35, 0.55)
     out = dict(base0=round(base0), r_half_km=round(r_half, 2), steep=round(steep, 2), around=round(float(around), 2),
                rough=round(rough, 3), above=round(float(above), 2), front=round(front, 2),
-               horn=round(horn, 2), rough_score=round(rough_s, 2), canyon=round(canyon, 2))
+               horn=round(horn, 2), rough_score=round(rough_s, 2), canyon=round(canyon, 2), shield=round(shield, 2))
     if canyon > 0:
         # canyon / plateau: draw from the floor up to the rim, look down from a little above the rim
         floor = float(np.percentile(ring(0, min(12, rr)), 3))
@@ -144,8 +146,43 @@ def analyse_shape(dem, summit, peak_m, view_dir, fetched_r, kx=None):
     return out
 
 
+_WATER_CACHE = {}
+
+
+def water_mask(dem, sea_level=0.0, flat_tol=0.01, min_area_km2=0.5, window=None):
+    """
+    Boolean mask of open water on the DEM grid.
+      sea    elevation <= sea_level (the tiles clip ocean bathymetry to 0, and below-zero values are sea floor)
+      lakes  patches whose 3x3 elevation range is below flat_tol metres (DEM lakes are exactly flat)
+    Connected pieces smaller than min_area_km2 are dropped. Dry land below sea level (Dead Sea shore,
+    Death Valley) reads as water; terrain(..., water=False) turns the layer off.
+    window=(i0, i1, j0, j1) works on that block of the DEM only (row/column slices). The last result is cached.
+    """
+    from scipy import ndimage as ndi
+    elev, lats, lons = dem
+    key = (id(elev), elev.shape, sea_level, flat_tol, min_area_km2, window)
+    if key in _WATER_CACHE: return _WATER_CACHE[key]
+    if window is not None:
+        i0, i1, j0, j1 = window
+        elev, lats, lons = elev[i0:i1, j0:j1], lats[i0:i1], lons[j0:j1]
+    sea = elev <= sea_level
+    rng_ = ndi.maximum_filter(elev, 3) - ndi.minimum_filter(elev, 3)
+    lake = ndi.binary_dilation((rng_ < flat_tol) & ~sea)       # the 3x3 test shrinks a lake by one pixel
+    m = sea | lake
+    if not m.any():
+        _WATER_CACHE.clear(); _WATER_CACHE[key] = None; return None
+    lab, n = ndi.label(m)
+    kx = 111.32 * math.cos(math.radians(float(np.mean(lats))))
+    cell_km2 = abs(lats[0] - lats[-1]) / (len(lats) - 1) * 110.57 * abs(lons[1] - lons[0]) * kx
+    sizes = np.bincount(lab.ravel()); sizes[0] = 0
+    keep = sizes * cell_km2 >= min_area_km2
+    out = keep[lab] if keep.any() else None
+    _WATER_CACHE.clear(); _WATER_CACHE[key] = out          # keep one DEM's mask (orbit frames reuse it)
+    return out
+
+
 def terrain(dem, summit, view_from=None, facing=None, extent_km=None, base_m=None, yaw=0.0,
-            NX=1400, NZ=520, smooth=0.6, shape_aware=True):
+            NX=1400, NZ=520, smooth=0.6, shape_aware=True, water=True):
     """
     summit    (lat, lon) of the main peak — refined to the true DEM maximum within ~1.5 km
     view_from (lat, lon) of the viewer (e.g. a city); or facing = compass bearing the camera looks toward
@@ -214,6 +251,17 @@ def terrain(dem, summit, view_from=None, facing=None, extent_km=None, base_m=Non
 
     t = Terrain()
     t.us, t.vs, t.h = us, vs, h
+    # water layer (sea and lakes): None when no water is in the scene, so dry views render exactly as before
+    t.water = None
+    wm = None
+    if water:                                  # only the block of DEM under the view grid (fast, and orbit-safe)
+        i0, j0 = max(int(ii.min()) - 3, 0), max(int(jj.min()) - 3, 0)
+        i1, j1 = min(int(ii.max()) + 4, elev.shape[0]), min(int(jj.max()) + 4, elev.shape[1])
+        if i1 - i0 > 3 and j1 - j0 > 3: wm = water_mask(dem, window=(i0, i1, j0, j1))
+    if wm is not None:
+        wg = map_coordinates(wm.astype(np.float32), [ii - i0, jj - j0], order=1, mode="nearest")
+        if (wg > 0.5).sum() >= 0.002 * wg.size:
+            t.water = np.clip(gaussian_filter(wg, sig), 0, 1)
     t.k, t.hs, t.base_m, t.peak_m, t.extent_km, t.summit = k, hs, base_m, peak_m, extent_km, (la, lo)
     t.top_m, t.shape = top_m, (shape or {})
 
@@ -275,6 +323,7 @@ class Scene:
         return np.interp(j, np.arange(len(self.us)), field[i])
 
     fade_pow = 1.0     # >1 softens the start of the left fade (set for horns/canyons, whose flat rows are dense)
+    thin_dense = 0.0   # 0..1: fade ridgelines that crowd closer than ~3 px on screen (set for shields)
 
     def xfade(self, px, width=450, extra=0):
         return np.clip((px / self.s - self.fadeX - extra) / width, 0, 1) ** self.fade_pow
@@ -288,10 +337,12 @@ class Scene:
         px = np.clip(np.round(sx).astype(int), 0, self.W - 1)
         return ((sx >= 0) & (sx < self.W)) & (sy <= self.CM[i, px] + tol * self.s), sx, sy
 
-    def ridgelines(self, spacing, alpha_fn, width_fn, color, min_alpha=0.03):
+    def ridgelines(self, spacing, alpha_fn, width_fn, color, min_alpha=0.03, over_water=False):
+        """over_water=False fades the lines out over sea and lakes (t.water), which get their own layer."""
         step = max(1, int(round(spacing / (self.vs[1] - self.vs[0]))))
         segs, cols, wids = [], [], []
         px = np.arange(self.W); color = np.array(color, float)
+        wat = getattr(self.t, "water", None) if not over_water else None
         for i in range(0, len(self.vs), step):
             y = self.Y[i]; cov = np.isfinite(y)
             prev = self.CM[i - 1] if i else np.full(self.W, np.inf)
@@ -299,6 +350,11 @@ class Scene:
             if vis.sum() < 2: continue
             ctx = dict(i=i, px=px, depth=(self.vs[i] - self.v0) / (V1 - self.v0), u=self.u_at(i, px), v=self.vs[i])
             a = np.where(vis, alpha_fn(ctx), 0)
+            if wat is not None: a = a * (1 - self.sample(wat, i, px))
+            if self.thin_dense > 0 and i >= step:
+                # rows that pile up on screen (the far flanks of a broad shield) are thinned instead of stacking into a slab
+                gap = np.where(np.isfinite(self.Y[i - step]) & cov, self.Y[i - step] - y, 99)
+                a = a * (1 - self.thin_dense * (1 - np.clip(gap / (3.0 * self.s), 0.12, 1)))
             pts = np.stack([px, np.where(cov, y, 0)], 1)
             sgm = np.stack([pts[:-1], pts[1:]], 1)
             keep = vis[:-1] & vis[1:] & (a[:-1] > min_alpha)
@@ -350,6 +406,51 @@ class Scene:
             x, y = self.proj(self.us[jj], self.vs[ii], self.h[ii, jj])
             out.append(np.array([x, y]) if 0 <= x < self.W else None)
         return out
+
+
+# ------------------------------------------------------------------ water layer (sea and lakes)
+def iso_lines(sc, field, levels, tol=2.0, min_fade=0.03):
+    """Visible iso-lines of a grid field (the coastline is t.water at 0.5), drawn on the terrain surface.
+    Returns [(segments (N,2,2) output px, fade (N,), level)]."""
+    import contourpy
+    t = sc.t; out = []
+    gen = contourpy.contour_generator(t.us, t.vs, field)
+    du, dv = t.us[1] - t.us[0], t.vs[1] - t.vs[0]
+    for lev in levels:
+        for line in gen.lines(lev):
+            u, v = line[:, 0], line[:, 1]
+            hh = map_coordinates(t.h, [(v - t.vs[0]) / dv, (u - t.us[0]) / du], order=1, mode="nearest")
+            vis, sx, sy = sc.visible(u, v, hh, tol=tol)
+            fade = sc.xfade(sx) * sc.edge_fade(u, v)
+            P = np.stack([sx, sy], 1); S = np.stack([P[:-1], P[1:]], 1)
+            keep = vis[:-1] & vis[1:] & (fade[:-1] > min_fade) & (np.hypot(*(P[1:] - P[:-1]).T) < 25 * sc.s)
+            if keep.any(): out.append((S[keep], fade[:-1][keep], lev))
+    return out
+
+
+def wave_marks(sc, G, seed=0, density=1.8, min_len=12, max_len=46):
+    """
+    Sparse horizontal wave strokes on visible water, spaced in screen space: a flat sea seen at a grazing
+    angle is otherwise a dense block of rows. Strokes are longer and further apart towards the viewer.
+    G needs a "water" field. Returns (segments (N,2,2), alpha (N,), nearness 0..1 (N,)).
+    """
+    s = sc.s; H, W = G["mask"].shape
+    w = G["water"] * G["edge"] * sc.xfade(np.arange(W))[None, :]
+    near = np.clip((V1 - sc.vs[G["row"]]) / (V1 - sc.v0), 0, 1) ** 2
+    L = (min_len + (max_len - min_len) * near) * s
+    gap = (7 + 16 * near) * s
+    rng = np.random.default_rng(seed + 77)
+    p = np.where(w > 0.6, density * 0.6 / (L * gap), 0)
+    ys, xs = np.nonzero(rng.random((H, W)) < p)
+    if not len(xs): return np.zeros((0, 2, 2)), np.zeros(0), np.zeros(0)
+    half = L[ys, xs] * rng.uniform(0.3, 0.7, len(xs))
+    x0 = np.clip(xs - half, 0, W - 1); x1 = np.clip(xs + half, 0, W - 1)
+    ok = (w[ys, x0.astype(int)] > 0.5) & (w[ys, x1.astype(int)] > 0.5)
+    ys, xs, x0, x1 = ys[ok], xs[ok], x0[ok], x1[ok]
+    yf = ys + 0.5
+    segs = np.stack([np.stack([x0, yf], 1), np.stack([x1, yf], 1)], 1)
+    nr = near[ys, xs]
+    return segs, w[ys, xs] * (0.35 + 0.65 * nr), nr
 
 
 # ------------------------------------------------------------------ backgrounds & drawing helpers

@@ -24,12 +24,14 @@ The scripts never write into the skill folder, which may be read-only: images, D
 
 **Auto values.**
 - The summit is refined to the DEM maximum within 1.5 km of the given point.
-- `analyse_shape()` measures the landform on rings around the summit (see its docstring for the metrics) and returns three scores: `horn` (steep peak with high ground in front of it), `rough` (alpine texture) and `canyon` (the target sits below the surrounding plateau). Cones score 0 on all three. It also returns a `kind` label (canyon / horn / range / massif / shield / cone), which is only a label: the rules below use the scores.
+- `analyse_shape()` measures the landform on rings around the summit (see its docstring for the metrics) and returns four scores: `horn` (steep peak with high ground in front of it), `rough` (alpine texture), `canyon` (the target sits below the surrounding plateau) and `shield` (a broad, gentle dome, steepness under 0.5). Cones score 0 on all four. It also returns a `kind` label (canyon / horn / range / massif / shield / cone), which is only a label: the rules below use the scores.
 - Base: the 20th percentile on the 0.35..1 × 40 km ring (the cone rule), raised towards the local base in the viewer-facing sector by the horn score. For canyons, the 3rd percentile within 12 km (the floor).
 - Height scale: the peak, or for canyons the rim (90th percentile of the 3..20 km ring), maps to 4.3.
 - Extent: `clip(10.5 × height_km × (1 − 0.4·horn) × (1 − 0.1·rough), 8, 60)`, limited by how much DEM was fetched.
 - Relief, line spacing, extra smoothing and camera height come from the same scores. The analysis ignores `yaw`, so orbits keep one framing.
 - `terrain(..., shape_aware=False)` (CLI `--no-shape`) applies the cone rules to every landform. The analysis result is stored as `t.shape` (metrics, scores, suggested values) and `t.top_m`.
+
+**Water.** `water_mask(dem, window=...)` marks sea (elevation ≤ 0 m; the tiles clip ocean to 0 and keep bathymetry below it) and lakes (3×3 elevation range under 1 cm, dilated by a pixel), keeping connected pieces of 0.5 km² or more. `terrain()` runs it on the block of DEM under the view grid and samples it to `t.water` (0..1, smoothed like `h`), or leaves `t.water = None` when fewer than 0.2% of the grid cells are water. Every water code path is skipped when it is `None`, which is why dry views stay pixel-identical. `terrain(..., water=False)` / `--no-water` turns it off.
 
 **Checking a change.** Cones must stay pixel-identical. Before editing, render Fuji, Ararat and Mauna Kea in all six styles at draft quality with a fixed `--dem`, then render them again with the edited engine and compare the PNGs (maximum difference 0/255). Also look at one horn, one range and one canyon, since those use the shape rules.
 
@@ -48,7 +50,9 @@ Defaults: `fx 4500`, `fy 10200` (about 2.3× vertical exaggeration on screen), `
 
 For frames that aren't 3:1, `oy` shifts `hy` so the composition stays vertically centred. `fadeX = cx − 1150` is where the left-side fade begins, in reference px. It is disabled for `align=center`.
 
-`fit_offset()` in `render.py` pans vertically for horns and canyons only, so the skyline stays below 21% of the frame (12% without labels, leaving room for a label) and the foreground above 90%. `animate.py` measures it once at yaw 0 and passes it to every frame. `Scene.fade_pow` squares the left fade for those shapes, because their flattened plains are dense stacks of rows that otherwise start as a hard edge.
+`Scene.thin_dense` (set to the shape's `shield` score) fades a ridgeline where it sits less than 3 reference px above the previous drawn row, so the far flanks of a broad shield (Mauna Kea's saddle) don't stack into a solid slab with a hard left edge.
+
+`fit_offset()` in `render.py` pans vertically for horns and canyons only, so the skyline stays below 21% of the frame (12% without labels, leaving room for a label) and the foreground above 90%. `animate.py` measures it once at yaw 0 and passes it to every frame. `Scene.fade_pow` squares the left fade for those shapes and for shields, because their flattened plains are dense stacks of rows that otherwise start as a hard edge.
 
 **The one rule that prevents most bugs:** `cx`, `hy`, `fadeX` and every hard-coded offset are *reference* units, while `Y`, `CM`, silhouette values and pixel indices are *output* units. Convert with `× s` or `/ s`, always explicitly. Expressions like `sc.hy + 270 * s` mix the two frames and were the main source of mispositioned moons and fades while building this.
 
@@ -89,20 +93,32 @@ Tools already available:
 - `sun_spot(sc, centre, r, peak, avoid)` keeps a sun or moon where the style put it unless the disc is mostly buried or sits on a jagged skyline, then searches along the skyline for a spot about 70% visible, away from the summit. Pass `label_spans(sc, peaks, pts)` as `avoid` if the style draws labels.
 - `draw_labels()` lifts a label above the skyline (with a longer leader) when the skyline would cross its text, and skips peaks in the faded left zone.
 - `parchment()`, `halftone()`, `draw_network()`, `draw_labels()`, `footnote()`.
+- Water: `sc.ridgelines(..., over_water=False)` already fades lines over `t.water`. `iso_lines(sc, field, levels)` gives visible iso-lines of any grid field on the terrain surface (the coastline is `t.water` at 0.5), `wave_marks(sc, G)` gives sparse horizontal strokes on visible water spaced in screen space (G needs a `water` field), and `draw_water()` in `render.py` puts coastline and waves on a ridgeline style.
+
+## 6a. Topo on rough ground, canyon woodcut
+
+`style_topo` checks `crowd = max(horn, rough_score)`; at 0 (cones, shields) it draws the plain contours as before. Otherwise:
+- `contour_gap()` solves the projection's Jacobian per grid node to get the on-screen distance between neighbouring contours (0 where the surface folds).
+- Decisions are made per visible piece of a contour (`contour_runs()`), never per point, so a line is kept or dropped whole and nothing breaks along a ridge. Intermediates next to an index contour (levels 1 and 4 of 5) go when the piece's median gap is under 3.2 ref px, the middle ones (2 and 3) under 2.4 px, with a 0.6 px ramp.
+- An index piece shorter than 70 ref px (the bit that peeks over a ridge) is drawn at intermediate weight instead of as a dark ledge.
+- Illuminated contours: width × (0.55 + 0.9·tone) and alpha × (0.6 + 0.8·tone), where tone runs 0 (lit) to 1 (turned from the light) around the shade of flat ground.
+- Water is a thin shoreline (alpha 0.6, width 0.5) plus sparse `wave_marks()` level lines, never a bold ring.
+
+`style_woodcut` for canyons (`canyon` score > 0): `canyon_body()` is ink by depth below the rim (the rim maps to 4.3) plus shadow, thresholded per pixel by `carve()`. Carved paper lines are drawn where it is ink, engraved ink lines where it is paper, and the rim gets an inked skyline. The sun is hidden by the terrain itself rather than by the ink, since most of the rim is paper.
 
 Line widths passed to matplotlib are in points at 200 dpi, where 1 pt ≈ 2.8 px. `ridgelines()` already multiplies by `s`.
 
 ## 7. The web template
 
 `assets/studio_template.html` is the same pipeline in JavaScript. `build_studio.py` fills its placeholders:
-- `__CONFIG__`: grid radius `R`, normalisation `k` and `hs`, base and peak in km, viewer E/N offset, peaks with E/N and labels, fonts, name and slug. It also carries `v0` (the near-edge trim Python uses) and `auto` = {kind, relief, spacing, camh, topoCamh, snowline, fit, fadePow}, all computed in Python with the shape analysis.
-- `__DEM__`: a base64 little-endian uint16 512×512 grid in metres, spanning ±R km east/north of the summit.
+- `__CONFIG__`: grid radius `R`, normalisation `k` and `hs`, base and peak in km, viewer E/N offset, peaks with E/N and labels, fonts, name and slug. It also carries `v0` (the near-edge trim Python uses) and `auto` = {kind, relief, spacing, camh, topoCamh, snowline, fit, fadePow, crowd, canyon, shield}, all computed in Python with the shape analysis.
+- `__DEM__`: a base64 little-endian uint16 512×512 grid in metres, spanning ±R km east/north of the summit. Bit 15 flags water from `water_mask()` (elevations fit in 14 bits); the page rebuilds `t.water` from it with the same 0.2% rule. The studio grid is quantised to whole metres, which would make flat plains look like lakes, so detection stays in Python. A page that fetches float tiles itself can port `water_mask()` directly (sea ≤ 0 m, flat 3×3 patches, 0.5 km² components).
 - Text and font placeholders.
 
 Two differences from the Python version:
 - Ridgelines are grouped into `Path2D` buckets by (alpha, width) so each render needs only a few dozen `stroke()` calls.
 - Draft renders (60% size, fewer rows) run while a slider moves, and a full render follows after 260 ms idle.
 
-JS `autoPanY()` and `sunSpot()`/`labelSpans()` mirror `fit_offset()` and `sun_spot()`/`label_spans()`. Keep the two sides in step when you change either.
+JS `autoPanY()` and `sunSpot()`/`labelSpans()` mirror `fit_offset()` and `sun_spot()`/`label_spans()`; `isoSegs()`/`isoLines()`, `waveMarks()`, `contourGap()` and `canyonBody()`/`carve()` mirror the water, topo and canyon code above. JS topo joins marching-squares segments that share a grid-edge id (union-find) to find the visible pieces, since it has no polylines; it smooths with a 3×3 mean where Python uses a gaussian. `bucketLines()` batches strokes by (alpha, width). Keep the two sides in step when you change either.
 
 To add a style to the web studio, add a preset to `PRESETS`, a render function to `RENDER`, and its name to `ORDER`.

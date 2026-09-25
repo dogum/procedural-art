@@ -15,7 +15,7 @@ import numpy as np
 from scipy.ndimage import map_coordinates
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from terrain_art import ensure_dem, load_dem, terrain
+from terrain_art import ensure_dem, load_dem, terrain, water_mask
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE = os.path.join(HERE, "..", "assets", "studio_template.html")
@@ -75,6 +75,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--lang", choices=sorted(HAN_FONTS), help="glyph forms for Han-only labels (default: from the summit's location)")
     ap.add_argument("--no-shape", action="store_true", help="cone framing rules for every landform (ignore the landform analysis)")
+    ap.add_argument("--no-water", action="store_true", help="don't treat sea and lakes as a separate water layer")
     a = ap.parse_args()
 
     summit = parse_ll(a.peak); vf = parse_ll(a.view_from) if a.view_from else None
@@ -92,6 +93,9 @@ def main():
     ii = np.interp(la + NN / ky, lats[::-1], np.arange(len(lats))[::-1].astype(float))
     jj = (lo + EE / kx - lons[0]) / (lons[1] - lons[0])
     G = map_coordinates(elev, [ii, jj], order=1, mode="nearest").clip(0, 9000).astype("<u2")
+    wm = None if a.no_water else water_mask(dem)
+    if wm is not None:                          # bit 15 flags open water (elevations need only 14 bits)
+        G[map_coordinates(wm.astype(np.float32), [ii, jj], order=1, mode="nearest") > 0.5] |= 0x8000
 
     peaks = []
     for L in a.label:
@@ -112,11 +116,12 @@ def main():
     fam = lambda f, w: "&family=" + f.replace(" ", "+") + f":wght@{w}"
     fonts = fam(serif, "400;500") + fam(sans, "500")
     sh = t.shape
-    horn, canyon = sh.get("horn", 0), sh.get("canyon", 0)
+    horn, canyon, shield = sh.get("horn", 0), sh.get("canyon", 0), sh.get("shield", 0)
     auto = dict(kind=sh.get("kind", "legacy"), relief=sh.get("relief", 1.0), spacing=sh.get("spacing", 1.0),
                 camh=sh.get("camh"), topoCamh=round(24 - 10 * horn, 2) if horn > 0.05 else None,
                 snowline=round(sh["snowline_m"]) if sh.get("snowline_m") else None, fit=bool(horn >= 0.05 or canyon >= 0.05),
-                fadePow=round(1 + min(1.0, horn + canyon), 2))
+                fadePow=round(1 + min(1.0, horn + canyon + shield), 2),
+                crowd=round(max(horn, sh.get("rough_score", 0)), 2), canyon=round(canyon, 2), shield=round(shield, 2))
     cfg = dict(DN=N, R=R, k=t.k, hs=t.hs, base_km=t.base_m / 1000, peak_km=t.peak_m / 1000, v0=float(t.vs[0]), auto=auto,
                view=view, peaks=peaks, name=a.name, native=native,
                slug=re.sub(r"[^a-z0-9]+", "-", a.name.lower()).strip("-") or "mountain",

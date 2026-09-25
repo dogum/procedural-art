@@ -64,15 +64,17 @@ Before framing, the renderer measures the terrain around the summit: how steep t
 
 | `kind` | Example | What the defaults do |
 |---|---|---|
-| cone, shield | Fuji, Ararat, Mauna Kea | The standard framing, which the other rules adjust |
+| cone, shield | Fuji, Ararat, Mauna Kea | The standard framing, which the other rules adjust. Shields also thin ridgelines that pile up on screen, so their broad far flanks don't print as a solid slab |
 | horn | Matterhorn | Higher base, tighter scene, lower camera, so the peak owns the frame instead of the whole massif |
-| massif, range (rough) | Denali, Tetons | Slightly wider line spacing and a little smoothing |
-| canyon | Grand Canyon | Drawn from its floor to its rim, seen from just above the rim, no snow |
+| massif, range (rough) | Denali, Tetons | Slightly wider line spacing and a little smoothing. Topo is drawn like a survey map (below) |
+| canyon | Grand Canyon | Drawn from its floor to its rim, seen from just above the rim, no snow. Woodcut is carved by depth below the rim |
 
-Horns and canyons also get an automatic vertical pan (skyline below about 21% of the frame, foreground above 90%) and a softer left fade. Any explicit `--extent`, `--base`, `--relief`, `--spacing`, `--camh`, `--zoom` or `--pan-y` overrides the automatic value. `--no-shape` applies the cone rules to every landform, for comparison.
+Horns and canyons also get an automatic vertical pan (skyline below about 21% of the frame, foreground above 90%) and a softer left fade; shields get the softer fade too. Any explicit `--extent`, `--base`, `--relief`, `--spacing`, `--camh`, `--zoom` or `--pan-y` overrides the automatic value. `--no-shape` applies the cone rules to every landform, for comparison.
 
 - **Close viewpoints.** Pick the viewpoint the famous photo is taken from; for horns it changes the silhouette a lot. The Matterhorn from Riffelsee (45.98333, 7.76222) shows the familiar profile with the steep north face on the right; from Zermatt (46.0170, 7.7500) the same peak reads as a broader pyramid.
-- **Canyons.** Target a butte or temple inside the canyon and use a rim viewpoint. The summit refinement snaps to the highest point within 1.5 km, so label the peak it actually finds. The result is a flat far rim with the side canyons cut into it. Survey, nocturne and riso suit this best; woodcut turns the canyon into a heavy black block, and topo gets busy because every wall is a stack of contours.
+- **Canyons.** Target a butte or temple inside the canyon and use a rim viewpoint. The summit refinement snaps to the highest point within 1.5 km, so label the peak it actually finds. The result is a flat far rim with the side canyons cut into it. In woodcut the inner gorge and shaded side canyons print black and the rim, buttes and lit walls stay paper with engraved lines. Topo is still the busiest style here, because every wall is a stack of contours.
+- **Topo on rough ground** (horns, ranges, canyons) is drawn like a survey map: every fifth contour is heavier, intermediate contours are dropped a whole visible piece at a time where they crowd closer than about 3 px (next to the index lines first), and short index pieces that peek over a ridge are drawn at intermediate weight instead of as dark ledges. Line weight follows the light (illuminated contours), so faces turned from the light print heavier and the peak reads as a solid. Cones and shields keep plain contours.
+- **Water.** Sea (elevation at or below 0 m, since the tiles clip ocean to 0) and lakes (patches the DEM holds exactly flat, 0.5 km² or more) are their own layer. Ridgelines fade out over water, a coastline is drawn, and each style marks the water its own way: sparse wave strokes (survey, nocturne), a thin shoreline plus a few sparse level lines (topo), dotted shore and waves (stipple), a flat blue tint (riso), a flat ink block with carved waves (woodcut). Views with no water render exactly as before. The default framing often keeps the sea out of view (Mauna Kea from Hilo shows none); a larger `--extent`, `--align center` or a coastal viewpoint (Vesuvius from Naples) brings it in. Dry land below sea level (Dead Sea shore, Death Valley) reads as water; `--no-water` turns the layer off.
 - **Detection is tuned on seven places** (Fuji, Ararat, Matterhorn, Denali, Tetons, Grand Canyon, Mauna Kea). A new landform can land between the rules; if the draft looks wrong, set `--base`/`--extent` by hand.
 
 ## Framing knobs
@@ -89,6 +91,7 @@ Horns and canyons also get an automatic vertical pan (skyline below about 21% of
 | Snow cap too big / small | `--snowline <metres>` |
 | Composition sits too high / low | `--pan-y 80` / `--pan-y -80` (reference px, 1000 = full height); an explicit value turns off the automatic fit |
 | Sun or labels in the way | `--no-sun`, `--no-labels`; `--network` adds the triangulation network to other styles |
+| Water drawn where there is none | `--no-water` |
 | Palette | `--paper #hex --ink #hex --accent #hex` |
 
 Everything is normalised to a reference mountain (4.3 km tall, 46 km half-width), so a 1 km hill and an 8 km giant both fill the frame the same way. `--relief` is how you restore or exaggerate real proportions.
@@ -111,7 +114,7 @@ python $SK/scripts/build_studio.py --peak 35.3606,138.7274 --from 35.5100,138.75
   --name "Mount Fuji" --native "富士山" --label "富士山|3776 m" --out fuji-studio.html
 ```
 
-This produces one self-contained HTML file of about 0.8 MB. It embeds a 512×512 elevation grid, renders with plain Canvas 2D, and makes no network calls at runtime (Google Fonts only). It has all six styles, sliders for camera, light and colour, an orbit animation, and a 3000×1000 PNG export. The same landform-aware framing, sun placement and label lifting run in the page; `--no-shape` uses the cone rules. It takes `--from` or `--facing` like render.py and reuses the `dem_<lat>_<lon>.npz` next to `--out`. To publish it as a claude.ai artifact, declare the `downloads` capability so the Save button works; the page falls back to showing the image to save manually if the capability is unavailable. Verify it headless with Playwright if available: load it, click each style tile, and check for console errors.
+This produces one self-contained HTML file of about 0.8 MB. It embeds a 512×512 elevation grid, renders with plain Canvas 2D, and makes no network calls at runtime (Google Fonts only). It has all six styles, sliders for camera, light and colour, an orbit animation, and a 3000×1000 PNG export. The same landform-aware framing, water layer, sun placement and label lifting run in the page; `--no-shape` uses the cone rules and `--no-water` leaves water out. It takes `--from` or `--facing` like render.py and reuses the `dem_<lat>_<lon>.npz` next to `--out`. To publish it as a claude.ai artifact, declare the `downloads` capability so the Save button works; the page falls back to showing the image to save manually if the capability is unavailable. Verify it headless with Playwright if available: load it, click each style tile, and check for console errors.
 
 ## Video
 
@@ -128,7 +131,7 @@ Frames go to `<out>_frames/`; frames that already exist are skipped, so a killed
 - **Network.** Elevation comes from AWS Terrain Tiles (`s3.amazonaws.com/elevation-tiles-prod`), which needs no key and covers the whole globe, including ocean bathymetry (clipped to 0). If that domain is blocked, say so and ask the user to allow it. Void pixels in the tiles (±32768 m, seen around Denali) are filled from their neighbours when the DEM is loaded.
 - **DEM size matters for the analysis.** The landform measurements use rings out to 40 km, so a default run fetches a 65 km radius. A run with a small `--extent` fetches less; a later default run into the same folder sees that the cache is too small and fetches the full area again. An explicit `--dem` that is too small only prints a warning.
 - **Fonts for non-Latin labels.** The engine looks for Noto CJK (then Hiragino, Yu Gothic, MS Gothic and similar on macOS and Windows) for Chinese, Japanese and Korean, and uses DejaVu (bundled with matplotlib) for Latin, Cyrillic, Greek, Armenian and Georgian. If no CJK font is found it prints a warning and the labels render as boxes; other scripts need a font installed. Check the preview. The web studio loads the matching Noto family from Google Fonts; for Han-only labels such as 富士山 it picks Japanese, Korean, Traditional or Simplified glyph forms from the summit's location, or from `--lang ja|ko|zh-Hant|zh-Hans`.
-- **Contour lines need altitude.** Seen from eye level, contours collapse into horizontal stripes. The `topo` style therefore uses a high camera with 2.4× vertical exaggeration. Keep that if you tweak it. Topo is also the weakest style on rough terrain: horns come out as stepped pyramids.
+- **Contour lines need altitude.** Seen from eye level, contours collapse into horizontal stripes. The `topo` style therefore uses a high camera with 2.4× vertical exaggeration. Keep that if you tweak it. Horns still show some of the stepped-pyramid look in topo; the light-weighted lines soften it.
 - **Labels can fall outside the frame.** With `--align right`, a second peak far to the left of the summit (Mount Moran from Snake River Overlook, Mauna Loa from Hilo) may land in the faded zone, and its label is skipped. Use `--align center` or `--yaw` if it matters.
 - **Near-edge artefacts.** If vertical streaks appear under the terrain, something is sampling below the grid's front edge. The G-buffer masks those pixels; keep that mask if you edit the engine.
 - **Seeing the output.** Always view a downscaled preview before delivering. Two render passes with a look in between beat five blind tweaks.

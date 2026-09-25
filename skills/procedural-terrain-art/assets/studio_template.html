@@ -170,13 +170,23 @@ const V0 = CFG.v0 ?? -35, NF = Math.min(16, -0.5 * V0);        // grid starts ju
 const AUTO = CFG.auto || {};                                     // shape-aware defaults computed by build_studio.py
 const FADEPOW = AUTO.fadePow ?? 1;                               // softer left fade for horns and canyons (dense flat rows)
 const xf = v => Math.pow(v < 0 ? 0 : v > 1 ? 1 : v, FADEPOW);
+const THIN = AUTO.shield ?? 0;                                   // thin ridgelines that crowd on screen (broad shields)
+const AQ = THIN ? 40 : 15;                                      // alpha levels per ridgeline bucket; finer for the thinned shield flanks
 const snowFromFrac = f => AUTO.snowline ?? Math.round((CFG.base_km + f * (CFG.peak_km - CFG.base_km)) * 1000 / 10) * 10;
-let DEM;
+let DEM, WAT = null;
 function decodeDEM(){
+  // uint16 metres; bit 15 flags open water (sea and lakes), found by water_mask() in build_studio.py
   const b = atob(DEM_B64), u8 = new Uint8Array(b.length);
   for (let i = 0; i < b.length; i++) u8[i] = b.charCodeAt(i);
-  const u16 = new Uint16Array(u8.buffer); DEM = new Float32Array(u16.length);
-  for (let i = 0; i < u16.length; i++) DEM[i] = u16[i] / 1000;
+  const u16 = new Uint16Array(u8.buffer); DEM = new Float32Array(u16.length); const w = new Uint8Array(u16.length); let any = false;
+  for (let i = 0; i < u16.length; i++){ DEM[i] = (u16[i] & 0x7fff) / 1000; if (u16[i] & 0x8000){ w[i] = 1; any = true; } }
+  if (any) WAT = w;
+}
+function watAt(E, N){
+  let x = (E + R) / (2 * R) * (DN - 1), y = (R - N) / (2 * R) * (DN - 1);
+  x = Math.max(0, Math.min(DN - 1.001, x)); y = Math.max(0, Math.min(DN - 1.001, y));
+  const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * DN + x0;
+  return (WAT[i] * (1 - fx) + WAT[i + 1] * fx) * (1 - fy) + (WAT[i + DN] * (1 - fx) + WAT[i + DN + 1] * fx) * fy;
 }
 function demAt(E, N){
   let x = (E + R) / (2 * R) * (DN - 1), y = (R - N) / (2 * R) * (DN - 1);
@@ -227,8 +237,15 @@ function buildTerrain(yaw, NX, NZ){
   for (let i = 0; i < NZ; i++){ const v = V0 + i * dv;
     for (let j = 0; j < NX; j++){ const u = U0 + j * du;
       h[i * NX + j] = Math.max(demAt((u * rE + v * dE) * KSC, (u * rN + v * dN) * KSC) - BASE, 0) * HS; } }
+  // water layer: null when (almost) no water is in the scene, so dry views render as before
+  let water = null;
+  if (WAT){ water = new Float32Array(NX * NZ); let n = 0;
+    for (let i = 0; i < NZ; i++){ const v = V0 + i * dv;
+      for (let j = 0; j < NX; j++){ const u = U0 + j * du, w = watAt((u * rE + v * dE) * KSC, (u * rN + v * dN) * KSC);
+        water[i * NX + j] = w; if (w > 0.5) n++; } }
+    if (n < 0.002 * NX * NZ) water = null; }
   const toUV = (E, N) => [(E * rE + N * rN) / KSC, (E * dE + N * dN) / KSC];
-  const t = { NX, NZ, du, dv, h, toUV };
+  const t = { NX, NZ, du, dv, h, toUV, water };
   tCache.key = key; tCache.t = t; return t;
 }
 function lighting(t, az, el, snowAbs){
@@ -296,8 +313,8 @@ function pixelAttr(sc, x, y, field){
 }
 
 /* ---------------- ridgelines (floating horizon) ---------------- */
-function ridgelines(ctx, sc, stepKm, fn, color){
-  const { W, Y, CM, t } = sc, { NZ, dv } = t;
+function ridgelines(ctx, sc, stepKm, fn, color, overWater = false){
+  const { W, Y, CM, t } = sc, { NZ, dv } = t, wat = overWater ? null : t.water;   // lines fade out over water
   const step = Math.max(1, Math.round(stepKm / dv)), pxStep = sc.s > 0.6 ? 1 : 1;
   const buckets = new Map(), tol = 0.3 * sc.s;
   for (let i = 0; i < NZ; i += step){
@@ -309,8 +326,11 @@ function ridgelines(ctx, sc, stepKm, fn, color){
       if (vis && prevOK){
         const u = (px / sc.s - sc.cx) * d / sc.fx;
         const r = fn(i, px, u, v, depth);
+        if (wat) r[0] *= 1 - sc.sampleRow(wat, i, px);
+        if (THIN && i >= step){ const yp = Y[(i - step) * W + px];   // rows that pile up on screen (shield flanks) are thinned
+          r[0] *= 1 - THIN * (1 - Math.max(0.12, Math.min(1, isFinite(yp) ? (yp - y) / (3 * sc.s) : 1))); }
         if (r[0] > 0.03){
-          const ka = Math.min(15, Math.round(r[0] * 15)), kw = Math.round(r[1] * 4);
+          const ka = Math.min(AQ, Math.round(r[0] * AQ)), kw = Math.round(r[1] * 4);
           const key = ka * 1000 + kw; let p = buckets.get(key);
           if (!p){ p = new Path2D(); buckets.set(key, p); }
           p.moveTo(px0, y0); p.lineTo(px, y);
@@ -321,13 +341,80 @@ function ridgelines(ctx, sc, stepKm, fn, color){
   }
   ctx.save(); ctx.lineCap = "round";
   for (const [key, p] of buckets){
-    const a = Math.floor(key / 1000) / 15, w = (key % 1000) / 4;
+    const a = Math.floor(key / 1000) / AQ, w = (key % 1000) / 4;
     ctx.strokeStyle = rgba(color, a); ctx.lineWidth = Math.max(0.35, w * 2.0 * sc.s * P.weight); ctx.stroke(p);
   }
   ctx.restore();
 }
 function edgeFade(sc, px, u, v){
   return xf((px / sc.s - sc.fadeX) / 450) * clamp01((46 - Math.abs(u)) / 14) * clamp01((v - V0) / NF) * clamp01((V1 - v) / 8);
+}
+
+/* ---------------- iso-lines and the water layer (mirrors iso_lines / wave_marks in terrain_art.py) ---------------- */
+// Marching squares over a grid field. cb(p, q) gets two crossing points [u, v, height, edgeId]; edgeId names the
+// grid edge the point lies on, so segments that share an id are joined (used to measure visible runs).
+function isoSegs(t, f, lev, cb){
+  const { NX, NZ, du, dv, h } = t;
+  for (let i = 0; i < NZ - 1; i++){ const va = V0 + i * dv, vb = va + dv;
+    for (let j = 0; j < NX - 1; j++){
+      const k = i * NX + j, a = f[k], b = f[k + 1], c = f[k + NX + 1], d = f[k + NX];
+      const code = (a > lev) | (b > lev) << 1 | (c > lev) << 2 | (d > lev) << 3;
+      if (code === 0 || code === 15) continue;
+      const ua = U0 + j * du, P_ = [];
+      if ((a > lev) !== (b > lev)){ const q = (lev - a) / (b - a); P_.push([ua + q * du, va, h[k] + (h[k + 1] - h[k]) * q, 2 * k]); }
+      if ((b > lev) !== (c > lev)){ const q = (lev - b) / (c - b); P_.push([ua + du, va + q * dv, h[k + 1] + (h[k + NX + 1] - h[k + 1]) * q, 2 * (k + 1) + 1]); }
+      if ((d > lev) !== (c > lev)){ const q = (lev - d) / (c - d); P_.push([ua + q * du, vb, h[k + NX] + (h[k + NX + 1] - h[k + NX]) * q, 2 * (k + NX)]); }
+      if ((a > lev) !== (d > lev)){ const q = (lev - a) / (d - a); P_.push([ua, va + q * dv, h[k] + (h[k + NX] - h[k]) * q, 2 * k + 1]); }
+      for (let m = 0; m + 1 < P_.length; m += 2) cb(P_[m], P_[m + 1]);
+    } }
+}
+function surfVis(sc, v, x, y, tol = 2){
+  const i = Math.max(0, Math.min(sc.t.NZ - 1, Math.floor((v - V0) / sc.t.dv) - 1)), px = Math.round(x);
+  return px >= 0 && px < sc.W && y <= sc.CM[i * sc.W + px] + tol * sc.s;
+}
+// alpha-bucketed strokes: one stroke() per (alpha, width) pair
+function bucketLines(){ const m = new Map();
+  return { add(a, w, x1, y1, x2, y2){ if (a <= 0.03) return; const k = Math.min(16, Math.round(a * 16)) * 1000 + Math.round(w * 20);
+      let p = m.get(k); if (!p){ p = new Path2D(); m.set(k, p); } p.moveTo(x1, y1); p.lineTo(x2, y2); },
+    stroke(ctx, col, cap = "round"){ ctx.save(); ctx.lineCap = cap;
+      for (const [k, p] of m){ ctx.strokeStyle = rgba(col, Math.floor(k / 1000) / 16); ctx.lineWidth = (k % 1000) / 20; ctx.stroke(p); } ctx.restore(); } };
+}
+// visible iso-lines of a grid field drawn on the terrain surface (the coastline is t.water at 0.5)
+function isoLines(sc, f, lev, cb){
+  isoSegs(sc.t, f, lev, (p, q) => {
+    const a = sc.proj(p[0], p[1], p[2]), b = sc.proj(q[0], q[1], q[2]);
+    if (!surfVis(sc, p[1], a[0], a[1]) || !surfVis(sc, q[1], b[0], b[1]) || Math.hypot(b[0] - a[0], b[1] - a[1]) > 25 * sc.s) return;
+    const fd = edgeFade(sc, a[0], p[0], p[1]); if (fd > 0.03) cb(a, b, fd);
+  });
+}
+function drawCoast(ctx, sc, col, alpha, width){
+  if (!sc.t.water) return; const B = bucketLines();
+  isoLines(sc, sc.t.water, 0.5, (a, b, f) => B.add(alpha * f, width * 2.8 * sc.s * P.weight, a[0], a[1], b[0], b[1]));
+  B.stroke(ctx, col);
+}
+function waterEdge(sc, x, y){          // water x fades at pixel (x, y), 0 off the water
+  const o = sc.owner[y * sc.W + x]; if (o < 0) return 0;
+  const v = V0 + o * sc.t.dv, u = (x / sc.s - sc.cx) * (v - ZCAM) / sc.fx;
+  return sc.sampleRow(sc.t.water, o, x) * xf((x / sc.s - sc.fadeX) / 450) * clamp01((46 - Math.abs(u)) / 14) * clamp01((v - V0) / NF) * clamp01((V1 - v) / 8);
+}
+// sparse horizontal wave strokes spaced in screen space; returns [x0, y, x1, alpha, nearness]
+function waveMarks(sc, seed, density = 1.8, minLen = 12, maxLen = 46){
+  const { W, H, s, t } = sc, owner = gbuffer(sc), R_ = rng(seed + 77), out = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
+    const o = owner[y * W + x]; if (o < 0 || sc.sampleRow(t.water, o, x) <= 0.6) continue;
+    const w = waterEdge(sc, x, y); if (w <= 0.6) continue;
+    const near = ((V1 - (V0 + o * t.dv)) / (V1 - V0)) ** 2, L = (minLen + (maxLen - minLen) * near) * s, gap = (7 + 16 * near) * s;
+    if (R_() >= density * 0.6 / (L * gap)) continue;
+    const half = L * (0.3 + 0.4 * R_()), x0 = Math.max(0, x - half), x1 = Math.min(W - 1, x + half);
+    if (waterEdge(sc, x0 | 0, y) <= 0.5 || waterEdge(sc, x1 | 0, y) <= 0.5) continue;
+    out.push([x0, y + 0.5, x1, w * (0.35 + 0.65 * near), near]);
+  }
+  return out;
+}
+function drawWaves(ctx, sc, col, alpha, width, density, minLen, maxLen){
+  if (!sc.t.water) return; const B = bucketLines();
+  for (const [x0, y, x1, a, nr] of waveMarks(sc, P.seed, density, minLen, maxLen)) B.add(alpha * a, (0.45 + 0.6 * nr) * width * 2.8 * sc.s * P.weight, x0, y, x1, y);
+  B.stroke(ctx, col);
 }
 
 /* ---------------- backgrounds ---------------- */
@@ -513,9 +600,40 @@ function renderSurvey(ctx, sc){
     if (a < 0.03 || y1 > H) continue; ctx.strokeStyle = rgba(ink.map(c => c * 0.8), a);
     ctx.beginPath(); ctx.moveTo(x - 2, y0); ctx.lineTo(x, y1); ctx.stroke(); }
   ctx.restore();
+  drawCoast(ctx, sc, ink.map(c => c * 0.9), 0.8, 0.9); drawWaves(ctx, sc, ink.map(c => c * 0.9), 0.7, 0.8);
   if (P.network) drawNetwork(ctx, sc, pk, acc, true, R_);
   if (P.labels){ drawLabels(ctx, sc, pk, ink, CFG.labelFont);
     footnote(ctx, sc, CFG.footnote, ink); }
+}
+
+/* Screen distance (px) between neighbouring contours stepH apart, per grid node, from the projection's
+   Jacobian (0 where the surface folds). Mirrors contour_gap() in render.py. */
+function contourGap(sc, hf, stepH){
+  const { NX, NZ, du, dv } = sc.t, n = NX * NZ, SX = new Float32Array(n), SY = new Float32Array(n);
+  for (let i = 0; i < NZ; i++) for (let j = 0; j < NX; j++){ const k = i * NX + j, p = sc.proj(U0 + j * du, V0 + i * dv, hf[k]); SX[k] = p[0]; SY[k] = p[1]; }
+  const gap = new Float32Array(n);
+  const D = (F, i, j, di, dj) => { const i0 = Math.max(0, i - di), i1 = Math.min(NZ - 1, i + di), j0 = Math.max(0, j - dj), j1 = Math.min(NX - 1, j + dj);
+    return (F[i1 * NX + j1] - F[i0 * NX + j0]) / Math.max(1, (i1 - i0) + (j1 - j0)); };
+  for (let i = 0; i < NZ; i++) for (let j = 0; j < NX; j++){
+    const k = i * NX + j, SXi = D(SX, i, j, 1, 0), SXj = D(SX, i, j, 0, 1), SYi = D(SY, i, j, 1, 0), SYj = D(SY, i, j, 0, 1), hi = D(hf, i, j, 1, 0), hj = D(hf, i, j, 0, 1);
+    const det = SXj * SYi - SYj * SXi;
+    if (Math.abs(det) <= 1e-9){ gap[k] = 0; continue; }
+    const gx = (hj * SYi - SYj * hi) / det, gy = (SXj * hi - SXi * hj) / det;
+    gap[k] = stepH / Math.max(Math.hypot(gx, gy), 1e-9);
+  }
+  return gap;
+}
+function gridAt(t, F, u, v){
+  let j = (u - U0) / t.du, i = (v - V0) / t.dv; j = Math.max(0, Math.min(t.NX - 1.001, j)); i = Math.max(0, Math.min(t.NZ - 1.001, i));
+  const j0 = j | 0, i0 = i | 0, fj = j - j0, fi = i - i0, k = i0 * t.NX + j0;
+  return (F[k] * (1 - fj) + F[k + 1] * fj) * (1 - fi) + (F[k + t.NX] * (1 - fj) + F[k + t.NX + 1] * fj) * fi;
+}
+function box3(t, F){                   // 3x3 mean, a light stand-in for the Python gaussian
+  const { NX, NZ } = t, out = new Float32Array(F.length);
+  for (let i = 0; i < NZ; i++) for (let j = 0; j < NX; j++){ let a = 0, n = 0;
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++){ const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= NZ || jj >= NX) continue; a += F[ii * NX + jj]; n++; }
+    out[i * NX + j] = a / n; }
+  return out;
 }
 
 function renderTopo(ctx, sc){
@@ -523,37 +641,54 @@ function renderTopo(ctx, sc){
   ctx.putImageData(paperImage(W, H, paper, P.seed + 4), 0, 0);
   const { NX, NZ, du, dv, h } = t, stepH = 0.04 * (P.spacing / 0.375);
   const thin = new Path2D(), thick = new Path2D(), faint = new Path2D();
-  const edge = (a, b, lev) => { const f = (lev - a) / (b - a); return f; };
-  function vis(u, v, x, y){
-    const i = Math.max(0, Math.min(NZ - 1, Math.floor((v - V0) / dv) - 1)), px = Math.round(x);
-    if (px < 0 || px >= W) return false; return y <= sc.CM[i * W + px] + 2 * s;
+  // rough ground (horns, ranges, canyon walls), as in style_topo(): crowded intermediate contours are dropped a whole
+  // visible piece at a time, short index pieces that peek over a ridge get intermediate weight, and line weight
+  // follows the light (illuminated contours: heavier on slopes turned away from it)
+  const crowd = AUTO.crowd || 0;
+  let gap = null, tone = null, B = null;
+  if (crowd > 0){
+    gap = contourGap(sc, box3(t, h), stepH); tone = box3(t, t.shade);
+    const flat = Math.sin(P.lightEl * Math.PI / 180);
+    for (let k = 0; k < tone.length; k++) tone[k] = clamp01(0.5 - (tone[k] - flat) / 0.5);
+    B = bucketLines();
   }
   let li = 0;
   for (let lev = 0.12; lev < 4.4; lev += stepH, li++){
-    const idx = li % 5 === 0, fadeL = Math.max(0.15, Math.min(1, lev / 0.6));
-    for (let i = 0; i < NZ - 1; i++){ const va = V0 + i * dv, vb = va + dv;
-      for (let j = 0; j < NX - 1; j++){
-        const a = h[i*NX+j], b = h[i*NX+j+1], c = h[(i+1)*NX+j+1], d = h[(i+1)*NX+j];
-        const code = (a > lev) | (b > lev) << 1 | (c > lev) << 2 | (d > lev) << 3;
-        if (code === 0 || code === 15) continue;
-        const ua = U0 + j * du, ub = ua + du, P_ = [];
-        if ((a > lev) !== (b > lev)) P_.push([ua + edge(a, b, lev) * du, va]);
-        if ((b > lev) !== (c > lev)) P_.push([ub, va + edge(b, c, lev) * dv]);
-        if ((d > lev) !== (c > lev)) P_.push([ua + edge(d, c, lev) * du, vb]);
-        if ((a > lev) !== (d > lev)) P_.push([ua, va + edge(a, d, lev) * dv]);
-        for (let k = 0; k + 1 < P_.length; k += 2){
-          const [u1, v1] = P_[k], [u2, v2] = P_[k + 1];
-          const p1 = sc.proj(u1, v1, lev), p2 = sc.proj(u2, v2, lev);
-          if (!vis(u1, v1, p1[0], p1[1]) || !vis(u2, v2, p2[0], p2[1])) continue;
-          const f = edgeFade(sc, p1[0], u1, v1) * fadeL; if (f < 0.05) continue;
-          const tgt = f < 0.45 ? faint : idx ? thick : thin;
-          tgt.moveTo(p1[0], p1[1]); tgt.lineTo(p2[0], p2[1]);
-        } } } }
-  ctx.save(); ctx.lineCap = "round";
-  ctx.strokeStyle = rgba(ink, 0.22); ctx.lineWidth = 1.1 * s * P.weight; ctx.stroke(faint);
-  ctx.strokeStyle = rgba(ink, 0.5); ctx.lineWidth = 1.4 * s * P.weight; ctx.stroke(thin);
-  ctx.strokeStyle = rgba(ink, 0.85); ctx.lineWidth = 2.6 * s * P.weight; ctx.stroke(thick);
-  ctx.restore();
+    const idx = li % 5 === 0, fadeL = Math.max(0.15, Math.min(1, lev / 0.6)), segs = [];
+    isoSegs(t, h, lev, (p, q) => {
+      const p1 = sc.proj(p[0], p[1], lev), p2 = sc.proj(q[0], q[1], lev);
+      if (!surfVis(sc, p[1], p1[0], p1[1]) || !surfVis(sc, q[1], p2[0], p2[1])) return;
+      const f = edgeFade(sc, p1[0], p[0], p[1]) * fadeL; if (f < 0.05) return;
+      if (!crowd){ const tgt = f < 0.45 ? faint : idx ? thick : thin; tgt.moveTo(p1[0], p1[1]); tgt.lineTo(p2[0], p2[1]); return; }
+      const um = (p[0] + q[0]) / 2, vm = (p[1] + q[1]) / 2, tn = gridAt(t, tone, um, vm), base = idx ? 0.85 : 0.5;
+      const a = base * f * (1 + crowd * (Math.min(0.6 + 0.8 * tn, 1 / base) - 1)), w = (idx ? 0.95 : 0.5) * (1 + crowd * (0.55 + 0.9 * tn - 1));
+      segs.push({ p, q, p1, p2, a, w, g: gridAt(t, gap, um, vm), len: Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) });
+    });
+    if (!crowd) continue;
+    // visible pieces: segments that share a crossing edge are joined (union-find on edge ids)
+    const par = new Map(), find = x => { while (par.get(x) !== x){ par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
+    for (const sg of segs){ for (const e of [sg.p[3], sg.q[3]]) if (!par.has(e)) par.set(e, e); par.set(find(sg.p[3]), find(sg.q[3])); }
+    const runs = new Map();
+    for (const sg of segs){ const r0 = find(sg.p[3]); let r = runs.get(r0); if (!r){ r = { len: 0, g: [] }; runs.set(r0, r); } r.len += sg.len; r.g.push(sg.g); }
+    for (const r of runs.values()){ r.g.sort((x, y) => x - y); r.gm = r.g[r.g.length >> 1]; }
+    const G = (li % 5 === 1 || li % 5 === 4 ? 3.2 : 2.4) * s;
+    for (const sg of segs){
+      const r = runs.get(find(sg.p[3])); let a = sg.a, w = sg.w;
+      if (idx){ const f = crowd * (1 - clamp01(r.len / (70 * s))); a *= 1 - f * (1 - 0.5 / 0.85); w *= (0.95 - 0.45 * f) / 0.95; }
+      else a *= 1 - crowd * (1 - clamp01((r.gm - G) / (0.6 * s)));
+      B.add(a, w * 2.8 * s * P.weight, sg.p1[0], sg.p1[1], sg.p2[0], sg.p2[1]);
+    }
+  }
+  if (!crowd){
+    ctx.save(); ctx.lineCap = "round";
+    ctx.strokeStyle = rgba(ink, 0.22); ctx.lineWidth = 1.1 * s * P.weight; ctx.stroke(faint);
+    ctx.strokeStyle = rgba(ink, 0.5); ctx.lineWidth = 1.4 * s * P.weight; ctx.stroke(thin);
+    ctx.strokeStyle = rgba(ink, 0.85); ctx.lineWidth = 2.6 * s * P.weight; ctx.stroke(thick);
+    ctx.restore();
+  } else B.stroke(ctx, ink);
+  if (t.water){   // water: a thin shoreline (the zero contour) and a few sparse level lines on the water
+    drawCoast(ctx, sc, ink, 0.6, 0.5); drawWaves(ctx, sc, ink, 0.35, 0.4 / 0.45, 0.5, 24, 80);
+  }
   const pk = peaks(sc);
   if (P.sun){ const a = sunAnchor(pk, s), c = [a[0], a[1] - (60 - P.sunY) * s]; drawSunDisc(ctx, sc, c, 110 * s, hex("#ee8f54"), 0.35, true); }
   if (P.network) drawNetwork(ctx, sc, pk, acc.map(c => c * 0.75), false, R_);
@@ -599,6 +734,7 @@ function renderNocturne(ctx, sc){
     const pres = (0.02 + 0.98 * Math.pow(clamp01((hh - 0.2) / 1.0), 0.9)) * edgeFade(sc, px, u, v);
     return [pres * (1 - 0.6 * dep) * (0.18 + 1.05 * Math.pow(l, 1.5) + 0.8 * w), 1.15 - 0.5 * dep];
   }, ink);
+  drawCoast(ctx, sc, ink, 0.7, 0.9); drawWaves(ctx, sc, ink, 0.9, 0.8);
   if (P.labels){ const pk = peaks(sc); drawLabels(ctx, sc, pk, ink, CFG.labelFont); }
 }
 
@@ -624,6 +760,13 @@ function renderStipple(ctx, sc){
     if (oy >= 0 && oyu >= 0) tone += 0.55 * clamp01(Math.abs(oy - oyu) / (4 / (t.dv / 0.125))) * pres;
     if (R_() < Math.pow(clamp01(tone), 1.1) * 1.05){ const r = (0.55 + R_() * 0.75) * s * 1.5; path.moveTo(x + r, y); path.arc(x, y, r, 0, 7); n++; }
   }
+  if (t.water){   // water: a dotted shoreline and sparse dotted wave strokes
+    const dot = (x, y) => { const r = (0.45 + R_() * 0.6) * s * 1.5; path.moveTo(x + r, y); path.arc(x, y, r, 0, 7); n++; };
+    const along = (x1, y1, x2, y2, a, gap) => { const L = Math.hypot(x2 - x1, y2 - y1), m = Math.max(1, L / (gap * s) | 0);
+      for (let q = 0; q < m; q++){ const f = R_(); if (R_() < a) dot(x1 + (x2 - x1) * f + (R_() - 0.5) * 0.7 * s, y1 + (y2 - y1) * f + (R_() - 0.5) * 0.7 * s); } };
+    isoLines(sc, t.water, 0.5, (a, b, f) => along(a[0], a[1], b[0], b[1], f, 2.2));
+    for (const [x0, y, x1, a] of waveMarks(sc, P.seed, 1.2)) along(x0, y, x1, y, a * 0.8, 3.4);
+  }
   ctx.fillStyle = rgba(ink, 1); ctx.fill(path);
   const pk = peaks(sc);
   if (P.sun || true){ ctx.fillStyle = rgba(acc, 1); ctx.beginPath(); ctx.arc(pk[0][0], pk[0][1] - 22 * s, 6 * s, 0, 7); ctx.fill(); }
@@ -640,6 +783,7 @@ function renderRiso(ctx, sc){
     const hh = sc.sampleRow(h, i, px), l = sc.sampleRow(sh, i, px);
     return [Math.pow(clamp01((hh - 0.15) / 0.9), 0.8) * edgeFade(sc, px, u, v) * (0.5 + 0.8 * (1 - l)), 1.6 - 0.7 * dep];
   }, [0, 0, 0]);
+  drawCoast(bctx, sc, [0, 0, 0], 0.9, 1.1);
   if (P.labels){ bctx.fillStyle = "#000"; bctx.font = `500 ${128 * s}px ${CFG.titleFont}`; bctx.fillText(CFG.native, 120 * s, 190 * s);
     bctx.font = `500 ${25 * s}px "JetBrains Mono", monospace`; bctx.fillText(CFG.risoSub, 124 * s, 245 * s); }
   const bdata = bctx.getImageData(0, 0, W, H).data;
@@ -664,10 +808,14 @@ function renderRiso(ctx, sc){
       const pres = clamp01((hh - 0.15) / 1.3) * f * clamp01(o * t.dv / NF); if (pres > 0) p = Math.max(p, ht(x, y, pres * l * l * 0.55, cell2)); }
     return p;
   };
-  const vx = 0.03;
+  const vx = 0.03, cw = 6 * s, c45 = Math.SQRT1_2;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
     const k = (y * W + x) * 4, tex = 1 - 0.18 * R_() * R_();
-    const pc = pinkAt(x - offX, y - offY) * tex, bc = Math.min(1, bdata[k + 3] / 255 * 1.15) * Math.min(1, tex + 0.1);
+    let bw = bdata[k + 3] / 255 * 1.15;
+    if (t.water && owner[y * W + x] >= 0){ const wv = waterEdge(sc, x, y);   // water: one flat blue tint at its own screen angle
+      if (wv > 0.02){ const X = (x + y) * c45, Y = (y - x) * c45, fx = ((X % cw) + cw) % cw - cw / 2, fy = ((Y % cw) + cw) % cw - cw / 2;
+        bw = Math.max(bw, clamp01(cw * 0.62 * Math.sqrt(wv * 0.2) - Math.hypot(fx, fy) + 0.5)); } }
+    const pc = pinkAt(x - offX, y - offY) * tex, bc = Math.min(1, bw) * Math.min(1, tex + 0.1);
     const g = (R_() - 0.5) * 0.02;
     for (let ch = 0; ch < 3; ch++) d[k + ch] = 255 * clamp01((paper[ch] + g) * (1 - pc * (1 - PINK[ch])) * (1 - bc * (1 - BLUE[ch])));
     d[k + 3] = 255;
@@ -675,18 +823,29 @@ function renderRiso(ctx, sc){
   ctx.putImageData(img, 0, 0);
 }
 
+/* Canyon woodcut ink per grid node, by depth below the rim and by shadow (mirrors canyon_body() / carve()) */
+function canyonBody(t){
+  const b = new Float32Array(t.h.length);
+  for (let k = 0; k < b.length; k++){ const dep = clamp01((4.3 - t.h[k]) / 4.3), deep = clamp01((dep - 0.3) / 0.35), sh = clamp01((0.62 - t.shade[k]) / 0.3);
+    b[k] = clamp01(0.95 * deep + 0.85 * sh * (0.6 + 0.4 * deep)); }
+  return b;
+}
+const carve = b => clamp01((b - 0.38) / 0.1);
+
 function renderWoodcut(ctx, sc){
   const { W, H, s, t } = sc, paper = hex(P.paper), ink = hex(P.ink), red = hex(P.accent), R_ = rng(P.seed + 13);
   const img = paperImage(W, H, paper, P.seed + 13, 0.1), d = img.data;
-  const owner = gbuffer(sc), pk = peaks(sc);
+  const owner = gbuffer(sc), pk = peaks(sc), canyon = AUTO.canyon || 0, cb = canyon > 0 ? canyonBody(t) : null;
   const sr = 150 * s, sun0 = [pk[0][0] + 330 * s, pk[0][1] + (60 + P.sunY) * s], sun = P.sunY ? sun0 : sunSpot(sc, sun0, sr, pk[0]);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
     const k = (y * W + x) * 4, o = owner[y * W + x];
-    let body = 0;
+    let body = 0, cover = 0;
     if (o >= 0){ const hh = sc.sampleRow(t.h, o, x), dd = V0 + o * t.dv - ZCAM, u = (x / s - sc.cx) * dd / sc.fx;
-      body = clamp01((hh - 0.25) / 0.6) * xf((x / s - sc.fadeX - 50) / 350) * clamp01((46 - Math.abs(u)) / 10) * clamp01((dd + ZCAM - V0) / NF); }
+      cover = xf((x / s - sc.fadeX - 50) / 350) * clamp01((46 - Math.abs(u)) / 10) * clamp01((dd + ZCAM - V0) / NF);
+      body = (cb ? canyon * carve(sc.sampleRow(cb, o, x)) + (1 - canyon) * clamp01((hh - 0.25) / 0.6) : clamp01((hh - 0.25) / 0.6)) * cover;
+      if (t.water){ const w = sc.sampleRow(t.water, o, x); body = Math.max(body * (1 - w), w * cover); } }   // water: one flat block of ink
     if (P.sun){ const ds = Math.hypot(x - sun[0], y - sun[1]);
-      let sm = clamp01((sr - ds) / 1.5) * (1 - body);
+      let sm = clamp01((sr - ds) / 1.5) * (1 - (cb ? cover : body));
       if (ds > 30 * s && ((ds / s) % 22) < 3.2) sm *= 0.15;
       if (sm > 0) for (let ch = 0; ch < 3; ch++) d[k + ch] = d[k + ch] * (1 - sm * 0.92) + 255 * red[ch] * sm * 0.92; }
     if (body > 0){ const tx = 0.92 + 0.12 * R_(); for (let ch = 0; ch < 3; ch++) d[k + ch] = d[k + ch] * (1 - body) + 255 * ink[ch] * tx * body; }
@@ -694,12 +853,32 @@ function renderWoodcut(ctx, sc){
   ctx.putImageData(img, 0, 0);
   const { h, sh, sn } = lineCommon(sc);
   const pc = paper.map(c => Math.min(1, c * 1.02));
-  ridgelines(ctx, sc, P.spacing, (i, px, u, v, dep) => {
-    const hh = sc.sampleRow(h, i, px), l = sc.sampleRow(sh, i, px), w = sc.sampleRow(sn, i, px);
-    const a = clamp01((hh - 0.3) / 0.5) * xf((px / s - sc.fadeX - 80) / 300) * clamp01((46 - Math.abs(u)) / 12);
-    const wd = (0.15 + 3.2 * Math.pow(clamp01((l - 0.45) / 0.5), 1.6) + 4 * w) * (1.15 - 0.45 * dep) * 0.8;
-    return [a, wd];
-  }, pc);
+  if (cb){
+    // canyon: carved (paper) lines in the ink, engraved (ink) lines on the paper-coloured rock, an inked rim
+    ridgelines(ctx, sc, P.spacing, (i, px, u, v, dep) => {
+      const l = sc.sampleRow(sh, i, px);
+      const a = carve(sc.sampleRow(cb, i, px)) * xf((px / s - sc.fadeX - 80) / 300) * clamp01((46 - Math.abs(u)) / 12) * clamp01((v - V0) / NF) * (1 - 0.85 * dep ** 3);
+      return [a, (0.5 + 2.2 * Math.pow(clamp01((l - 0.3) / 0.5), 1.4)) * (1.15 - 0.7 * dep) * 0.8];
+    }, pc);
+    ridgelines(ctx, sc, P.spacing, (i, px, u, v, dep) => {
+      const l = sc.sampleRow(sh, i, px);
+      return [(1 - carve(sc.sampleRow(cb, i, px))) * (0.35 + 0.6 * (1 - l)) * edgeFade(sc, px, u, v), (0.9 - 0.35 * dep) * 0.8];
+    }, ink);
+    ctx.save(); ctx.lineWidth = 1.2 * 2.8 * s * P.weight;
+    for (let x = 1; x < W; x += 2){ const a = xf((x / s - sc.fadeX - 80) / 300) * 0.9; if (a < 0.03 || sc.sil(x) > H) continue;
+      ctx.strokeStyle = rgba(ink, a); ctx.beginPath(); ctx.moveTo(x - 2, sc.sil(x - 2)); ctx.lineTo(x, sc.sil(x)); ctx.stroke(); }
+    ctx.restore();
+  } else {
+    ridgelines(ctx, sc, P.spacing, (i, px, u, v, dep) => {
+      const hh = sc.sampleRow(h, i, px), l = sc.sampleRow(sh, i, px), w = sc.sampleRow(sn, i, px);
+      const a = clamp01((hh - 0.3) / 0.5) * xf((px / s - sc.fadeX - 80) / 300) * clamp01((46 - Math.abs(u)) / 12);
+      const wd = (0.15 + 3.2 * Math.pow(clamp01((l - 0.45) / 0.5), 1.6) + 4 * w) * (1.15 - 0.45 * dep) * 0.8;
+      return [a, wd];
+    }, pc);
+  }
+  if (t.water){ const B = bucketLines();   // carved wave strokes in the water
+    for (const [x0, y, x1, a, nr] of waveMarks(sc, P.seed, 1.3)) B.add(Math.min(1, a * 1.2), (0.6 + 1.4 * nr) * 2.8 * s * P.weight, x0, y, x1, y);
+    B.stroke(ctx, pc); }
   // wind strokes
   ctx.save(); ctx.strokeStyle = rgba(ink, 0.8); ctx.lineCap = "round";
   [[1290, 120, 300], [1700, 260, 210], [2040, 95, 250], [2720, 120, 220]].forEach(([x0, y0, L], k) => {

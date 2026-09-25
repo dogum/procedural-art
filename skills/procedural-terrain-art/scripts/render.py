@@ -20,7 +20,7 @@ import argparse, os, sys, json
 import numpy as np
 sys.dont_write_bytecode = True                  # the skill folder may be read-only; keep it clean
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scipy.ndimage import gaussian_filter1d, shift
+from scipy.ndimage import gaussian_filter1d, shift, map_coordinates
 from terrain_art import *
 
 STYLES = ["survey", "topo", "nocturne", "stipple", "riso", "woodcut"]
@@ -50,12 +50,13 @@ def scene_for(style, t, cfg):
         dy = fit_offset(sc, t, cfg)
         if dy: cam["hy"] += dy; sc = Scene(t, cfg["W"], cfg["H"], align=cfg.get("align", "right"), **cam)
     sc.fade_pow = fade_pow(t)
+    sc.thin_dense = getattr(t, "shape", {}).get("shield", 0.0)
     return sc
 
 
 def fade_pow(t):
     sh = getattr(t, "shape", {})
-    return 1.0 + min(1.0, sh.get("horn", 0) + sh.get("canyon", 0))
+    return 1.0 + min(1.0, sh.get("horn", 0) + sh.get("canyon", 0) + sh.get("shield", 0))
 
 
 def fit_offset(sc, t, cfg):
@@ -78,6 +79,23 @@ def fit_offset(sc, t, cfg):
     elif bottom < 0.55 * Href: dy = max(0.0, min(0.55 * Href - bottom, 0.28 * Href - top))   # don't float high
     else: dy = 0.0
     return float(dy)
+
+
+# ---------------------------------------------------------------- water layer
+def draw_water(ax, t, sc, cfg, color, G=None, coast=(0.8, 0.9), waves=(0.7, 0.8)):
+    """Coastline plus sparse wave strokes over sea and lakes (ridgeline styles). No-op without water."""
+    if t.water is None: return
+    s = sc.s; color = np.array(color, float)
+    if G is None or "water" not in G: G = sc.gbuffer({"water": t.water})
+    if coast:
+        for S, f, _ in iso_lines(sc, t.water, [0.5]):
+            C = np.zeros((len(S), 4)); C[:, :3] = color; C[:, 3] = np.clip(coast[0] * f, 0, 1)
+            ax.add_collection(LineCollection(S, colors=C, linewidths=coast[1] * s, capstyle="round"))
+    if waves:
+        S, a, nr = wave_marks(sc, G, cfg["seed"])
+        if len(S):
+            C = np.zeros((len(S), 4)); C[:, :3] = color; C[:, 3] = np.clip(waves[0] * a, 0, 1)
+            ax.add_collection(LineCollection(S, colors=C, linewidths=(0.45 + 0.6 * nr) * waves[1] * s, capstyle="round"))
 
 
 # ---------------------------------------------------------------- styles
@@ -104,18 +122,52 @@ def style_survey(t, sc, cfg):
     P = np.stack([ok, sy], 1); S = np.stack([P[:-1], P[1:]], 1)
     C = np.zeros((len(S), 4)); C[:, :3] = np.array(ink) * 0.8; C[:, 3] = al[:-1] * 0.9
     ax.add_collection(LineCollection(S, colors=C, linewidths=1.3 * s))
+    draw_water(ax, t, sc, cfg, np.array(ink) * 0.9)
     if cfg["network"]: draw_network(ax, sc, pts, acc, dashed=True, seed=cfg["seed"])
     if cfg["labels"]: draw_labels(ax, sc, cfg["peaks"], pts, np.array(ink) * 0.9); footnote(ax, sc, cfg["footnote"], ink)
     return fig
+
+
+def contour_gap(sc, hf, step):
+    """Screen distance (output px) between neighbouring contours `step` apart, per grid node.
+    Solves the projection's Jacobian so it measures true on-screen crowding (0 where the surface folds)."""
+    U, V = np.meshgrid(sc.us, sc.vs)
+    SX, SY = sc.proj(U, V, hf)
+    SXi, SXj = np.gradient(SX); SYi, SYj = np.gradient(SY); hi, hj = np.gradient(hf)
+    det = SXj * SYi - SYj * SXi
+    ok = np.abs(det) > 1e-9
+    d = np.where(ok, det, 1.0)
+    gx = (hj * SYi - SYj * hi) / d; gy = (SXj * hi - SXi * hj) / d
+    g = np.hypot(gx, gy)
+    return np.where(ok, step / np.maximum(g, 1e-9), 0.0)
+
+
+def contour_runs(keep):
+    """Index arrays of consecutive kept segments (the visible pieces of one contour line)."""
+    idx = np.flatnonzero(keep)
+    return np.split(idx, np.flatnonzero(np.diff(idx) > 1) + 1) if len(idx) else []
 
 
 def style_topo(t, sc, cfg):
     import contourpy
     W, H, s = sc.W, sc.H, sc.s
     ink, acc = np.array(hexrgb(cfg["ink"])), hexrgb(cfg["accent"])
-    gen = contourpy.contour_generator(t.us, t.vs, gaussian_filter(t.h, 1.0))
+    hf = gaussian_filter(t.h, 1.0)
+    gen = contourpy.contour_generator(t.us, t.vs, hf)
     fig, ax = figure(parchment(W, H, cfg["seed"] + 4, hexrgb(cfg["paper"])))
     step = 0.04 * cfg["spacing"] / 0.375
+    sh = getattr(t, "shape", {})
+    # rough ground (horns, ranges, canyon walls) is drawn like a survey map: where intermediate contours crowd on
+    # screen they are dropped, whole visible pieces at a time (levels next to an index contour first, then the
+    # middle ones), so lines never break along a ridge; short index pieces that peek over a ridge are drawn at
+    # intermediate weight instead of as dark ledges
+    crowd = max(sh.get("horn", 0), sh.get("rough_score", 0))
+    du, dv = t.us[1] - t.us[0], t.vs[1] - t.vs[0]
+    if crowd > 0:
+        gap = contour_gap(sc, hf, step)
+        # illuminated contours (Tanaka): lines on slopes turned from the light print heavier, lit slopes lighter
+        L = np.array(cfg["light"], float); flat = L[2] / np.linalg.norm(L)
+        tone = np.clip(0.5 - (gaussian_filter(t.shade, 1.0) - flat) / 0.5, 0, 1)
     for k, lev in enumerate(np.arange(0.12, REF_H + 0.2, step)):
         idx = k % 5 == 0
         for line in gen.lines(lev):
@@ -124,10 +176,36 @@ def style_topo(t, sc, cfg):
             fade = sc.xfade(sx) * np.clip((46 - np.abs(u)) / 12, 0, 1) * np.clip((v - sc.v0) / sc.nf, 0, 1) * np.clip((V1 - v) / 8, 0, 1) * np.clip(lev / 0.6, 0.15, 1)
             a = (0.85 if idx else 0.5) * fade
             P = np.stack([sx, sy], 1); S = np.stack([P[:-1], P[1:]], 1)
-            keep = vis[:-1] & vis[1:] & (a[:-1] > 0.03) & (np.hypot(*(P[1:] - P[:-1]).T) < 25 * s)
+            seg_len = np.hypot(*(P[1:] - P[:-1]).T)
+            keep = vis[:-1] & vis[1:] & (a[:-1] > 0.03) & (seg_len < 25 * s)
             if not keep.any(): continue
-            C = np.zeros((keep.sum(), 4)); C[:, :3] = ink; C[:, 3] = a[:-1][keep]
-            ax.add_collection(LineCollection(S[keep], colors=C, linewidths=(0.95 if idx else 0.5) * s))
+            aseg, wseg = a[:-1].copy(), np.full(len(seg_len), 0.95 if idx else 0.5)
+            if crowd > 0:
+                ij = [(v - t.vs[0]) / dv, (u - t.us[0]) / du]
+                g = map_coordinates(gap, ij, order=1, mode="nearest"); tn = map_coordinates(tone, ij, order=1, mode="nearest")
+                gseg = 0.5 * (g[:-1] + g[1:]); tseg = 0.5 * (tn[:-1] + tn[1:])
+                aseg *= 1 + crowd * (np.clip(0.6 + 0.8 * tseg, 0, 1 / (0.85 if idx else 0.5)) - 1)
+                wseg *= 1 + crowd * (0.55 + 0.9 * tseg - 1)
+                for r in contour_runs(keep):
+                    if idx:
+                        f = crowd * (1 - np.clip(seg_len[r].sum() / (70 * s), 0, 1))
+                        aseg[r] *= 1 - f * (1 - 0.5 / 0.85); wseg[r] = 0.95 - 0.45 * f
+                    else:
+                        G = (3.2 if k % 5 in (1, 4) else 2.4) * s
+                        aseg[r] *= 1 - crowd * (1 - np.clip((np.median(gseg[r]) - G) / (0.6 * s), 0, 1))
+                keep &= aseg > 0.03
+                if not keep.any(): continue
+            C = np.zeros((keep.sum(), 4)); C[:, :3] = ink; C[:, 3] = aseg[keep]
+            ax.add_collection(LineCollection(S[keep], colors=C, linewidths=wseg[keep] * s))
+    if t.water is not None:
+        # water: a thin shoreline (the zero contour) and a few sparse level lines on the water
+        for S, f, _ in iso_lines(sc, t.water, [0.5]):
+            C = np.zeros((len(S), 4)); C[:, :3] = ink; C[:, 3] = np.clip(0.6 * f, 0, 1)
+            ax.add_collection(LineCollection(S, colors=C, linewidths=0.5 * s, capstyle="round"))
+        wS, wa, wn = wave_marks(sc, sc.gbuffer({"water": t.water}), cfg["seed"], density=0.5, min_len=24, max_len=80)
+        if len(wS):
+            C = np.zeros((len(wS), 4)); C[:, :3] = ink; C[:, 3] = np.clip(0.35 * wa, 0, 1)
+            ax.add_collection(LineCollection(wS, colors=C, linewidths=0.4 * s, capstyle="round"))
     pts = sc.peaks_screen([p["latlon"] for p in cfg["peaks"]])
     if cfg["network"]: draw_network(ax, sc, pts, np.array(acc) * 0.75, dashed=False, seed=cfg["seed"])
     if cfg["labels"]: draw_labels(ax, sc, cfg["peaks"], pts, ink * 0.9)
@@ -167,6 +245,7 @@ def style_nocturne(t, sc, cfg):
         return pres * (1 - 0.6 * c["depth"]) * (0.18 + 1.05 * sh ** 1.5 + 0.8 * sn) * sc.xfade(px)
     segs, cols, wids = sc.ridgelines(cfg["spacing"], alpha, lambda c: 1.15 - 0.5 * c["depth"], pale)
     fig, ax = figure(bg); add_lines(ax, segs, cols, wids, scale=0.75)
+    draw_water(ax, t, sc, cfg, pale, coast=(0.7, 0.9), waves=(0.9, 0.8))
     if cfg["labels"]:
         pts = sc.peaks_screen([p["latlon"] for p in cfg["peaks"]]); draw_labels(ax, sc, cfg["peaks"], pts, pale)
     return fig
@@ -174,7 +253,7 @@ def style_nocturne(t, sc, cfg):
 
 def style_stipple(t, sc, cfg):
     W, H, s = sc.W, sc.H, sc.s
-    G = sc.gbuffer({"shade": t.shade, "h": t.h, "snow": t.snow})
+    G = sc.gbuffer(dict({"shade": t.shade, "h": t.h, "snow": t.snow}, **({"water": t.water} if t.water is not None else {})))
     rng = np.random.default_rng(cfg["seed"])
     yy, xx = np.mgrid[0:H, 0:W]
     pres = np.clip((G["h"] - 0.2) / 1.7, 0, 1) ** 1.2 * sc.xfade(xx) * G["edge"]
@@ -191,6 +270,20 @@ def style_stipple(t, sc, cfg):
     keep = rng.random(tv.shape) < tv ** 1.1 * 1.05
     fig, ax = figure(parchment(W, H, cfg["seed"] + 8, hexrgb(cfg["paper"]), 0.06, 0.008))
     ax.scatter(px[keep], py[keep], s=rng.uniform(0.35, 1.3, keep.sum()) * s * s, c=[hexrgb(cfg["ink"])], linewidths=0)
+    if t.water is not None:
+        # water: a dotted shoreline and sparse dotted wave strokes, nothing else
+        dots = []
+        coast = iso_lines(sc, t.water, [0.5])
+        wS, wa, _ = wave_marks(sc, G, cfg["seed"], density=1.2)
+        for S, a, gap in [(S, f, 2.2) for S, f, _ in coast] + [(wS, wa * 0.8, 3.4)]:
+            if not len(S): continue
+            L = np.hypot(*(S[:, 1] - S[:, 0]).T); n = np.maximum(1, (L / (gap * s)).astype(int))
+            k = np.repeat(np.arange(len(S)), n); f = rng.random(len(k))
+            q = S[k, 0] + (S[k, 1] - S[k, 0]) * f[:, None] + rng.normal(0, 0.35 * s, (len(k), 2))
+            dots.append(q[rng.random(len(k)) < a[k]])
+        if dots:
+            q = np.concatenate(dots)
+            ax.scatter(q[:, 0], q[:, 1], s=rng.uniform(0.35, 1.1, len(q)) * s * s, c=[hexrgb(cfg["ink"])], linewidths=0)
     pts = sc.peaks_screen([p["latlon"] for p in cfg["peaks"]])
     if pts and pts[0] is not None: ax.scatter([pts[0][0]], [pts[0][1] - 22 * s], s=16 * s * s, c=[hexrgb(cfg["accent"])], linewidths=0)
     if cfg["labels"]: draw_labels(ax, sc, cfg["peaks"], pts, hexrgb(cfg["ink"]))
@@ -215,7 +308,7 @@ def style_riso(t, sc, cfg):
     d = np.hypot(xx - sun_c[0], yy - sun_c[1])
     pink = halftone(xx, yy, np.clip(1 - d / (1300 * s), 0, 1) ** 1.8 * 0.75 * sky, 11 * s) * sky
     if cfg["sun"]: pink = np.maximum(pink, np.clip((sun_r - d) / 1.5, 0, 1) * sky * 0.92)
-    G = sc.gbuffer({"shade": t.shade, "h": t.h})
+    G = sc.gbuffer(dict({"shade": t.shade, "h": t.h}, **({"water": t.water} if t.water is not None else {})))
     pres = np.clip((G["h"] - 0.15) / 1.3, 0, 1) * sc.xfade(xx) * G["edge"]
     pink = np.maximum(pink, halftone(xx, yy, G["mask"] * pres * G["shade"] ** 2 * 0.55, 7 * s))
     def alpha(c):
@@ -223,10 +316,14 @@ def style_riso(t, sc, cfg):
         return np.clip((hh - 0.15) / 0.9, 0, 1) ** 0.8 * sc.edge_fade(c["u"], c["v"]) * (0.5 + 0.8 * (1 - sh)) * sc.xfade(px)
     segs, cols, wids = sc.ridgelines(cfg["spacing"] * 4 / 3, alpha, lambda c: 1.6 - 0.7 * c["depth"], (0, 0, 0))
     fig, ax = figure(np.ones((H, W, 3))); add_lines(ax, segs, cols, wids, scale=0.8)
+    if t.water is not None: draw_water(ax, t, sc, cfg, (0, 0, 0), G, coast=(0.9, 1.1), waves=None)
     if cfg["labels"] and cfg["title"]:
         ax.text(120 * s, 190 * s + sc.oy * s, cfg["title"], fontsize=46 * s, color="k", fontproperties=font_for(cfg["title"], serif=False))
         if cfg["footnote"]: ax.text(124 * s, 245 * s + sc.oy * s, cfg["footnote"], fontsize=9 * s, color="k", fontproperties=font_for(cfg["footnote"], serif=False))
     blue = np.clip((1 - fig_to_array(fig).mean(-1)) * 1.15, 0, 1)
+    if t.water is not None:   # water: one flat blue tint, screened at its own angle
+        wv = G["water"] * G["edge"] * sc.xfade(xx)
+        blue = np.maximum(blue, halftone(xx, yy, wv * 0.2, 6 * s, angle=45) * (wv > 0.02))
     tex = np.clip(1 - 0.25 * np.abs(rng.standard_normal((H, W))) * gaussian_filter(rng.random((H, W)), 1.5), 0, 1)
     pink = shift(pink, (-3 * s, 5 * s), order=1) * tex
     blue = blue * np.clip(tex + 0.1, 0, 1)
@@ -234,31 +331,83 @@ def style_riso(t, sc, cfg):
     return paper * (1 - pink[..., None] * (1 - PINK)) * (1 - blue[..., None] * (1 - BLUE))
 
 
+def canyon_body(t):
+    """Woodcut ink for canyons, per grid node (0..1, threshold with carve()): by depth below the rim and by
+    shadow, so the inner gorge and shaded side canyons go black while the rim, buttes and lit walls stay paper."""
+    dep = np.clip((REF_H - t.h) / REF_H, 0, 1)             # the rim maps to the reference height
+    deep = np.clip((dep - 0.3) / 0.35, 0, 1)
+    shadow = np.clip((0.62 - t.shade) / 0.3, 0, 1)
+    return np.clip(0.95 * deep + 0.85 * shadow * (0.6 + 0.4 * deep), 0, 1)
+
+
+def carve(b):
+    return np.clip((b - 0.38) / 0.1, 0, 1)
+
+
 def style_woodcut(t, sc, cfg):
     W, H, s = sc.W, sc.H, sc.s
-    G = sc.gbuffer({"h": t.h})
+    canyon = getattr(t, "shape", {}).get("canyon", 0)
+    fields = {"h": t.h}
+    if t.water is not None: fields["water"] = t.water
+    if canyon > 0:
+        cb = canyon_body(t); fields["cb"] = cb
+    G = sc.gbuffer(fields)
     yy, xx = np.mgrid[0:H, 0:W]
     paper_c = np.array(hexrgb(cfg["paper"])); ink = np.array(hexrgb(cfg["ink"])); red = np.array(hexrgb(cfg["accent"]))
-    body = np.clip((G["h"] - 0.25) / 0.6, 0, 1) * sc.xfade(xx, 350, 50) * G["edge"]
+    if canyon > 0:
+        vv = sc.vs[G["row"]]            # no far-edge fade: the far rim is the skyline, and a faded block would print grey
+        edge = G["mask"] * np.clip((46 - np.abs(G["u"])) / 14, 0, 1) * np.clip((vv - sc.v0) / sc.nf, 0, 1)
+        body = (canyon * carve(G["cb"]) + (1 - canyon) * np.clip((G["h"] - 0.25) / 0.6, 0, 1)) * sc.xfade(xx, 350, 50) * edge
+    else:
+        body = np.clip((G["h"] - 0.25) / 0.6, 0, 1) * sc.xfade(xx, 350, 50) * G["edge"]
+    if t.water is not None:       # water is one flat block of ink
+        body = np.maximum(body * (1 - G["water"]), G["water"] * sc.xfade(xx, 350, 50) * G["edge"])
     body = gaussian_filter(body, 0.7 * s)
     bg = parchment(W, H, cfg["seed"] + 13, tuple(paper_c), 0.1)
     pts = sc.peaks_screen([p["latlon"] for p in cfg["peaks"]])
     p0 = pts[0] if pts and pts[0] is not None else np.array([2150 * s, 300 * s])
     if cfg["sun"]:
         sun_c = sun_spot(sc, (p0[0] + 330 * s, p0[1] + 60 * s), 150 * s, p0); d = np.hypot(xx - sun_c[0], yy - sun_c[1])
-        sun = np.clip((150 * s - d) / 1.5, 0, 1) * (1 - body)
+        sun = np.clip((150 * s - d) / 1.5, 0, 1) * (1 - (body if canyon <= 0 else gaussian_filter(G["mask"] * sc.xfade(xx, 350, 50) * G["edge"], 0.7 * s)))
         sun *= 1 - 0.85 * ((np.mod(d, 22 * s) < 3.2 * s) & (d > 30 * s))
         bg = bg * (1 - sun[..., None] * 0.92) + red * sun[..., None] * 0.92
     rt = gaussian_filter(np.random.default_rng(1).random((H, W)), 1.2)
     bg = bg * (1 - body[..., None]) + ink * body[..., None] * (0.92 + 0.12 * rt[..., None])
-    def alpha(c):
-        i, px = c["i"], c["px"]; hh = sc.sample(t.h, i, px)
-        return np.clip((hh - 0.3) / 0.5, 0, 1) * sc.xfade(px, 300, 80) * np.clip((46 - np.abs(c["u"])) / 12, 0, 1)
-    def width(c):
-        i, px = c["i"], c["px"]; sh, sn = sc.sample(t.shade, i, px), sc.sample(t.snow, i, px)
-        return (0.15 + 3.2 * np.clip((sh - 0.45) / 0.5, 0, 1) ** 1.6 + 4 * sn) * (1.15 - 0.45 * c["depth"])
-    segs, cols, wids = sc.ridgelines(cfg["spacing"] * 4 / 3, alpha, width, paper_c)
-    fig, ax = figure(np.clip(bg, 0, 1)); add_lines(ax, segs, cols, wids, scale=0.8, cap="butt")
+    if canyon > 0:
+        # canyon: carved (paper) lines in the ink, engraved (ink) lines on the paper-coloured rock
+        def alpha_c(c):
+            i, px = c["i"], c["px"]
+            return (carve(sc.sample(cb, i, px)) * sc.xfade(px, 300, 80) * np.clip((46 - np.abs(c["u"])) / 12, 0, 1)
+                    * np.clip((c["v"] - sc.v0) / sc.nf, 0, 1) * (1 - 0.85 * c["depth"] ** 3))    # far rows crowd: carve fewer
+        def width_c(c):
+            i, px = c["i"], c["px"]; sh = sc.sample(t.shade, i, px)
+            return (0.5 + 2.2 * np.clip((sh - 0.3) / 0.5, 0, 1) ** 1.4) * (1.15 - 0.7 * c["depth"])
+        def alpha_i(c):
+            i, px = c["i"], c["px"]; sh = sc.sample(t.shade, i, px)
+            return (1 - carve(sc.sample(cb, i, px))) * (0.35 + 0.6 * (1 - sh)) * sc.edge_fade(c["u"], c["v"]) * sc.xfade(px, 300, 80)
+        segs, cols, wids = sc.ridgelines(cfg["spacing"] * 4 / 3, alpha_c, width_c, paper_c)
+        segs2, cols2, wids2 = sc.ridgelines(cfg["spacing"] * 4 / 3, alpha_i, lambda c: 0.9 - 0.35 * c["depth"], ink)
+        fig, ax = figure(np.clip(bg, 0, 1)); add_lines(ax, segs, cols, wids, scale=0.8, cap="butt")
+        add_lines(ax, segs2, cols2, wids2, scale=0.8)
+        ok = np.where(np.isfinite(sc.silhouette))[0]           # an inked rim line against the sky
+        sy = gaussian_filter1d(sc.silhouette[ok], 1.0)
+        P = np.stack([ok, sy], 1); S = np.stack([P[:-1], P[1:]], 1)
+        C = np.zeros((len(S), 4)); C[:, :3] = ink; C[:, 3] = sc.xfade(ok[:-1], 300, 80) * 0.9
+        ax.add_collection(LineCollection(S, colors=C, linewidths=1.2 * s))
+    else:
+        def alpha(c):
+            i, px = c["i"], c["px"]; hh = sc.sample(t.h, i, px)
+            return np.clip((hh - 0.3) / 0.5, 0, 1) * sc.xfade(px, 300, 80) * np.clip((46 - np.abs(c["u"])) / 12, 0, 1)
+        def width(c):
+            i, px = c["i"], c["px"]; sh, sn = sc.sample(t.shade, i, px), sc.sample(t.snow, i, px)
+            return (0.15 + 3.2 * np.clip((sh - 0.45) / 0.5, 0, 1) ** 1.6 + 4 * sn) * (1.15 - 0.45 * c["depth"])
+        segs, cols, wids = sc.ridgelines(cfg["spacing"] * 4 / 3, alpha, width, paper_c)
+        fig, ax = figure(np.clip(bg, 0, 1)); add_lines(ax, segs, cols, wids, scale=0.8, cap="butt")
+    if t.water is not None:       # carved wave strokes in the water
+        wS, wa, wn = wave_marks(sc, G, cfg["seed"], density=1.3)
+        if len(wS):
+            C = np.zeros((len(wS), 4)); C[:, :3] = paper_c; C[:, 3] = np.clip(wa * 1.2, 0, 1)
+            ax.add_collection(LineCollection(wS, colors=C, linewidths=(0.6 + 1.4 * wn) * s, capstyle="round"))
     if cfg["sun"]:   # a few carved wind strokes, kept clear of the peak and sun
         for k, (dx, dy, L) in enumerate([(-800, -200, 300), (-380, -30, 210), (-60, -230, 250), (560, -200, 220)]):
             x0, y0 = p0[0] / s + dx, p0[1] / s + dy
@@ -309,7 +458,7 @@ def render(style, dem, cfg, out, preview=None):
     q = c.get("quality", 1.0)
     t = terrain(dem, c["summit"], view_from=c.get("view_from"), facing=c.get("facing"), extent_km=c.get("extent"),
                 base_m=c.get("base"), yaw=c.get("yaw", 0.0), NX=int(1400 * q), NZ=int(520 * q),
-                shape_aware=not c.get("no_shape", False))
+                shape_aware=not c.get("no_shape", False), water=not c.get("no_water", False))
     sh = t.shape
     # shape-aware defaults; anything given explicitly (CLI flag or cfg key) wins
     c.setdefault("relief", sh.get("relief", 1.0))
@@ -354,6 +503,7 @@ def main():
     ap.add_argument("--pan-y", type=float, help="reference px; default 0, or an automatic fit for horns and canyons")
     ap.add_argument("--spacing", type=float, help="ridge-line gap (normalised km, default 0.375, a little wider on rough terrain)")
     ap.add_argument("--no-shape", action="store_true", help="cone framing rules for every landform (ignore the landform analysis)")
+    ap.add_argument("--no-water", action="store_true", help="don't draw sea and lakes as a separate water layer")
     ap.add_argument("--paper"); ap.add_argument("--ink"); ap.add_argument("--accent")
     ap.add_argument("--no-sun", action="store_true"); ap.add_argument("--no-labels", action="store_true"); ap.add_argument("--network", action="store_true")
     ap.add_argument("--seed", type=int, default=1915)
@@ -377,7 +527,7 @@ def main():
     cfg = dict(summit=summit, view_from=parse_ll(a.view_from) if a.view_from else None, facing=a.facing,
                W=W, H=H, align=a.align, peaks=peaks, title=a.title, extent=a.extent, base=a.base, snowline=a.snowline,
                yaw=a.yaw, zoom=a.zoom, relief=a.relief, camh=a.camh, pan_x=a.pan_x, pan_y=a.pan_y, spacing=a.spacing,
-               sun=not a.no_sun, labels=not a.no_labels, network=a.network, seed=a.seed, quality=a.quality, no_shape=a.no_shape,
+               sun=not a.no_sun, labels=not a.no_labels, network=a.network, seed=a.seed, quality=a.quality, no_shape=a.no_shape, no_water=a.no_water,
                footnote=a.footnote if a.footnote is not None else f"{abs(summit[0]):.2f}°{'N' if summit[0] >= 0 else 'S'}  {abs(summit[1]):.2f}°{'E' if summit[1] >= 0 else 'W'}")
     for k in ("paper", "ink", "accent"):
         if getattr(a, k):
