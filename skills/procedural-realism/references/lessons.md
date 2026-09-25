@@ -54,7 +54,7 @@
 
 ## Measured
 
-The path tracer with MIS and adaptive sampling reaches the same glass noise 6.7× sooner than the basic sampler (`pathtracer.py --basic`) on the pomegranate scene (copper 12×, table caustic 2.4×). A 3000×1000 terrain frame takes 6 min (Ararat orchards, Yerevan blue hour) to 12 min (Fuji lake with 52k trees and houses in view). Paintings take 15–50 s at 3000×1000.
+The path tracer with MIS and adaptive sampling reaches the same glass noise 6.7× sooner than the basic sampler (`pathtracer.py --basic`) on the pomegranate scene (copper 12×, table caustic 2.4×). A 3000×1000 terrain frame takes 6 min (Ararat orchards, Yerevan blue hour) to 12 min (Fuji lake with 52k trees and houses in view). Paintings take 10–60 s at 3000×1000.
 
 ## Limits that remain
 
@@ -69,4 +69,4 @@ These are the honest weak points after all of the above. Tell the user when a re
 - **Twilight colour.** The multiple-scattering part of the physical sky is fitted by eye; blue hour leans a little lavender.
 - **Night.** The moon is a directional light 400× brighter than a real one relative to the sun (tuned so moonlit terrain beats the airglow floor), trees and houses get only its sky light, and the lenticular cloud is not moonlit, so it reads as a dark lens. A city at full night overwhelms the frame; blue hour suits it.
 - **Path tracer.** Nested media one level deep (a diffuse object in liquid doesn't get the liquid's colour), no torus or rounded box primitives, adaptive sampling that judges noise by luminance only (dispersion colour noise lingers), photon-map caustics slightly soft at their edges, and about an hour for a clean 2400×800 final.
-- **Paintings.** They follow the image, not the objects: detail under about 3 px becomes blobs, and stroke direction on large flat areas can look monotonous. Ink is poor on busy, dark scenes.
+- **Paintings.** They follow the image, not the objects. A detail pass brings back small shapes and hard highlights, but on noisy sources (a low-sample render) fine detail still softens, and stroke direction on large flat areas can look monotonous. Ink in wash mode is poor on busy, dark scenes; lines mode (auto-picked for objects) handles still lifes, though low-contrast silhouettes are only partly drawn.

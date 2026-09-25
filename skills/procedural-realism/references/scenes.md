@@ -7,7 +7,7 @@ Start from the closest of the three shipped scenes and change it one part at a t
 | File | What it shows | Final used |
 |---|---|---|
 | `scenes/pomegranate.json` | Pomegranates, apricots, copper sphere, a glass of juice and a crystal ball on walnut, window light from the upper left | the first showcase still life |
-| `scenes/wine_and_marbles.json` | Balloon glass of red wine, water tumbler, crystal ball, five glass marbles on wood; a low warm spot from the left throws long shadows filled with coloured caustics | 2400×800, 80 adaptive spp, ~54 min |
+| `scenes/wine_and_marbles.json` | Balloon glass of red wine, water tumbler, crystal ball, five glass marbles on wood; a low warm spot from the left throws long shadows filled with coloured caustics; a dim gradient backdrop, and a card above the frame that backlights the wine | 2400×800, 56 adaptive spp, then extra passes cropped to the glasses (`--crop`), ~59 min |
 | `scenes/prism_and_crystal.json` | Low sun through a window on white linen; a flint prism fans a spectrum, a brilliant-cut paperweight, a small gem and a crystal ball throw sparkles and rainbows | 2400×800, 60 adaptive spp, ~54 min |
 
 ## camera
@@ -23,6 +23,10 @@ Start from the closest of the three shipped scenes and change it one part at a t
 Rectangles that emit on one side. Either `corner`, `u`, `v` (edges; emits along normalize(u × v)) or `center`, `aim` (a point it faces) and `size` `[w,h]`.
 `color` (rgb), `intensity` (radiance multiplier), `spot` (emission × cos^spot of the angle from the light's normal; 0 = even, 8 = broad pool, 30+ = tight beam). Lights are visible to the camera and in reflections. The light used for each shadow ray is picked by power.
 
+Two light tricks from `wine_and_marbles.json`:
+- **Backdrop:** a large, dim light standing behind the table is a background. A `spot` of 20 to 30 makes it fade away from the point that faces the camera, a soft gradient. Glass is cleaner in front of a backdrop light than in front of a lit wall: a path through glass that ends on a light is counted exactly, while one that ends on a diffuse wall still needs a random shadow ray, and a large share of those go to the brightest light, not the one lighting the wall.
+- **Backlighting a liquid:** a curved glass bowl shows an upside-down view of what is above and behind it. A bright card just above the top of the frame lights the wine without ever being seen directly. Keep its `spot` low (0 to 3): the rays leaving the bowl reach it 10 to 40° off its axis.
+
 ## environment
 rgb radiance returned by rays that leave the scene.
 
@@ -32,7 +36,7 @@ rgb radiance returned by rays that leave the scene.
 | `diffuse` | `color` or `tex` (+ texture parameters), `tint` |
 | `coat` | pigment `color`/`tex` under a clear coat: `ior` (sets coat reflectance, 1.5 -> 4%), `coat_rough` (GGX alpha, 0.06) |
 | `metal` | `f0` rgb reflectance at normal incidence (copper `[0.95,0.64,0.54]`, gold `[1.0,0.78,0.34]`, steel `[0.56,0.57,0.58]`), `rough` GGX alpha (0 = mirror, 0.05 polished, 0.3 brushed) |
-| `glass` | `ior`, `sigma` absorption per cm per channel (colour of thick glass and liquids: red wine `[0.18,2.2,1.7]`, cobalt `[1.1,0.6,0.06]`), `abbe` (dispersion: 59 crown glass, 30 flint, lower = stronger rainbows), `outside_ior`/`outside_sigma` for a solid embedded in another medium (coloured core in a marble) |
+| `glass` | `ior`, `sigma` absorption per cm per channel (colour of thick glass and liquids: red wine `[0.18,2.2,1.7]` (reads almost black), backlit ruby `[0.09,0.85,0.75]`, cobalt `[1.1,0.6,0.06]`), `abbe` (dispersion: 59 crown glass, 30 flint, lower = stronger rainbows), `outside_ior`/`outside_sigma` for a solid embedded in another medium (coloured core in a marble) |
 
 Textures (`tex`): `walnut`, `oak` (planks), `marble`, `linen`, `plaster` (params `base`, `dark`/`vein`, `scale`, `plank`), and the fruit textures `pom`, `apricot`, `crown`. A new texture is a function `f(q_local, n, obj, mat) -> (albedo, bumped normal)` added to `TEXTURES` in `pathtracer.py`.
 

@@ -16,7 +16,7 @@ Four tools, numpy/scipy/pillow only, that push how close pure math gets to a pho
 | `scripts/pbr_terrain.py` (+ `post_terrain.py`) | Real mountains from real elevation data: atmosphere, golden light, shadows, snow, mist, clouds; optional lake reflections, trees and villages, blue hour with city lights, moonlit night | 7 s at 600×200 · ~2.5 min at 3000×1000 plain · 6–12 min with water, trees or a city |
 | `scripts/timelapse.py` | Sun-angle video (golden hour to night) along the real solar path for a date and place | ~1 min per 1200×400 keyframe; 40 keyframes ≈ 40 min |
 | `scripts/pathtracer.py` (+ `post_pathtrace.py`) | Tabletop scenes from a JSON file: glass, liquids, metal, glossy fruit, soft or hard light, caustics (photon map), rainbow dispersion, depth of field | ~3 s per pass at 900×300; 30–70 s per pass at 2400×800; 60–80 adaptive spp (about an hour) for a clean final |
-| `scripts/paint.py` | Any image (a render from above, or a photo the user uploads) as oil, impasto, gouache, watercolour or ink | 15–50 s at 3000×1000 |
+| `scripts/paint.py` | Any image (a render from above, or a photo the user uploads) as oil, impasto, gouache, watercolour or ink | 10–60 s at 3000×1000 |
 
 Requirements: Python 3 with numpy, scipy and pillow; ffmpeg for timelapses. The terrain renderer needs network access to AWS Terrain Tiles for elevation data.
 
@@ -100,7 +100,7 @@ python $S/post_pathtrace.py --tag final --work work/still --out wine_and_marbles
 
 ## Painterly finish
 
-`scripts/paint.py` turns any image into a painting with procedurally placed brush strokes or washes: a terrain render, a path-traced still life, or a photo the user uploads. Read `references/painting.md` to choose a style and tune it.
+`scripts/paint.py` turns any image into a painting with procedurally placed brush strokes or washes: a terrain render, a path-traced still life, or a photo the user uploads. Ink draws objects line-first and landscapes as sumi-e washes (`--ink-mode`, chosen automatically). Read `references/painting.md` to choose a style and tune it.
 
 ```bash
 python $S/paint.py --in final.png --out painting.png --style watercolor --size 1500x500   # draft, 5–20 s
@@ -133,6 +133,6 @@ python $S/paint_compare.py --out sheet.jpg --width 1800 --item final.png "render
 
 ## Honest limits (tell the user)
 
-Light, atmosphere, water reflections, glass, metal and real terrain at a distance are convincing. Close trees and houses look like a good game engine, cities are boxes that only work at blue hour or night, and water and timelapse shadows don't move. The path tracer lacks tori and rounded boxes, and paintings turn detail under about 3 px into blobs. On one CPU core a 3000×1000 terrain frame with water and trees takes about 12 minutes and a clean glass still life about an hour. `references/lessons.md` has the full list of limits, what each technique buys and the mistakes worth not repeating.
+Light, atmosphere, water reflections, glass, metal and real terrain at a distance are convincing. Close trees and houses look like a good game engine, cities are boxes that only work at blue hour or night, and water and timelapse shadows don't move. The path tracer lacks tori and rounded boxes, and paintings keep detail down to about 2 px only where the source draws it cleanly (a noisy render's speckled highlight becomes one soft shape). On one CPU core a 3000×1000 terrain frame with water and trees takes about 12 minutes and a clean glass still life about an hour. `references/lessons.md` has the full list of limits, what each technique buys and the mistakes worth not repeating.
 
 `scripts/dem.py` (elevation download and loading with void filling) is shared with procedural-terrain-art; both skills ship an identical copy. Change both or neither.

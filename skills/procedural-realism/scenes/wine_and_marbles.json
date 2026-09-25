@@ -1,38 +1,16 @@
 {
-  "description": "Red wine in a balloon glass, a tumbler of water, a crystal ball and coloured glass marbles on warm wood. A low warm spot from the far left throws long shadows with coloured caustics; a dim rim light behind. Units: cm, y up.",
-  "camera": {"position": [0.0, 21.0, -84.0], "target": [0.0, 4.6, 2.0], "hfov": 42, "aperture": 0.3, "focus": [-8.0, 3.0, 0.0]},
+  "description": "Red wine in a balloon glass, a tumbler of water, a crystal ball and coloured glass marbles on warm wood. A low warm spot from the far left throws long shadows with coloured caustics. Behind the table a dim emitting backdrop (its spot exponent darkens it away from the centre, a soft gradient) and, above the frame, a brighter card that the camera only sees through the wine, so the wine glows ruby. Units: cm, y up.",
+  "camera": {"position": [-8.5, 21.0, -86.0], "target": [-8.5, 5.0, 6.0], "hfov": 37, "aperture": 0.3, "focus": [-14.0, 4.0, 4.0]},
   "lights": [
-    {
-      "type": "rect",
-      "center": [-110.0, 38.0, 25.0],
-      "aim": [-8.0, 0.0, 2.0],
-      "size": [5, 5],
-      "spot": 40,
-      "color": [1.0, 0.84, 0.64],
-      "intensity": 7000.0
-    },
-    {
-      "type": "rect",
-      "center": [2.0, 28.0, 58.0],
-      "aim": [-8.0, 6.0, 5.0],
-      "size": [34, 8],
-      "spot": 2,
-      "color": [1.0, 0.78, 0.55],
-      "intensity": 6.0
-    },
-    {
-      "type": "rect",
-      "center": [30.0, 60.0, -50.0],
-      "aim": [2.0, 0.0, 0.0],
-      "size": [60, 40],
-      "color": [0.7, 0.8, 1.0],
-      "intensity": 0.15
-    }
+    {"type": "rect", "center": [-110.0, 38.0, 25.0], "aim": [-8.0, 0.0, 2.0], "size": [9, 9], "spot": 40, "color": [1.0, 0.84, 0.64], "intensity": 2160.0, "name": "key: low warm spot from the far left"},
+    {"type": "rect", "center": [30.0, 60.0, -50.0], "aim": [2.0, 0.0, 0.0], "size": [60, 40], "color": [0.7, 0.8, 1.0], "intensity": 0.15, "name": "cool fill from the front right"},
+    {"name": "backdrop: visible behind the table, brightest toward the top centre", "type": "rect", "center": [-10.0, 8.0, 59.8], "aim": [-10.0, 8.0, 0.0], "size": [150, 16], "spot": 30, "color": [1.0, 0.86, 0.7], "intensity": 0.2},
+    {"name": "glow card above the frame: lights the wine from behind", "type": "rect", "center": [-22.0, 33.0, 59.5], "aim": [-22.0, 33.0, 0.0], "size": [70, 34], "spot": 2, "color": [1.0, 0.92, 0.82], "intensity": 1.7}
   ],
   "environment": [0.004, 0.004, 0.005],
   "materials": {
     "glass": {"type": "glass", "ior": 1.52, "sigma": [0.006, 0.003, 0.004]},
-    "wine": {"type": "glass", "ior": 1.35, "sigma": [0.18, 2.2, 1.7]},
+    "wine": {"type": "glass", "ior": 1.35, "sigma": [0.09, 0.85, 0.75], "name": "thin enough to glow ruby when backlit (4 cm: 70% red, 3% green)"},
     "water": {"type": "glass", "ior": 1.333, "sigma": [0.012, 0.004, 0.003]},
     "cobalt": {"type": "glass", "ior": 1.52, "sigma": [1.1, 0.6, 0.06]},
     "amber": {"type": "glass", "ior": 1.52, "sigma": [0.05, 0.3, 1.1]},
@@ -40,35 +18,21 @@
     "ruby": {"type": "glass", "ior": 1.52, "sigma": [0.04, 1.2, 0.8]},
     "copper": {"type": "metal", "f0": [0.95, 0.64, 0.54], "rough": 0.05},
     "wood": {"type": "diffuse", "tex": "walnut", "base": [0.36, 0.23, 0.14], "dark": [0.3, 0.19, 0.11]},
-    "wall": {"type": "diffuse", "tex": "plaster", "base": [0.08, 0.07, 0.06]}
+    "wall": {"type": "diffuse", "tex": "plaster", "base": [0.22, 0.21, 0.2]}
   },
   "planes": [
     {"name": "table", "point": [0, 0, 0], "normal": [0, 1, 0], "material": "wood"},
     {"name": "wall", "point": [0, 0, 60.0], "normal": [0, 0, -1], "material": "wall"}
   ],
   "objects": [
-    {
-      "name": "wine glass foot",
-      "type": "cylinder",
-      "base": [-20.0, 0.02, 12.0],
-      "radius": 3.6,
-      "height": 0.26,
-      "material": "glass"
-    },
-    {
-      "name": "stem",
-      "type": "cylinder",
-      "base": [-20.0, 0.28, 12.0],
-      "radius": 0.3,
-      "height": 6.77,
-      "material": "glass"
-    },
+    {"name": "wine glass foot", "type": "cylinder", "base": [-20.0, 0.02, 12.0], "radius": 3.6, "height": 0.26, "material": "glass"},
+    {"name": "stem", "type": "cylinder", "base": [-20.0, 0.28, 12.0], "radius": 0.3, "height": 6.77, "material": "glass"},
     {
       "name": "bowl",
       "type": "bowl",
       "center": [-20.0, 11.6, 12.0],
       "r_outer": 4.6,
-      "r_inner": 4.4399999999999995,
+      "r_inner": 4.44,
       "cut": 1.932,
       "material": "glass",
       "fill": {"level": -0.92, "material": "wine"}
@@ -86,11 +50,15 @@
     },
     {"name": "crystal ball", "type": "sphere", "center": [3.0, 4.0, -5.0], "radius": 4.0, "material": "glass"},
     {"type": "sphere", "center": [-28, 1.6, 0], "radius": 1.6, "material": "ruby"},
-    {"type": "sphere", "center": [-8.5, 1.6, -9], "radius": 1.6, "material": "cobalt"},
-    {"type": "sphere", "center": [-19, 1.6, -8], "radius": 1.6, "material": "amber"},
+    {"type": "sphere", "center": [-8.5, 1.6, -6], "radius": 1.6, "material": "cobalt"},
+    {"type": "sphere", "center": [-19, 1.6, -5], "radius": 1.6, "material": "amber"},
     {"type": "sphere", "center": [-15, 1.6, 3], "radius": 1.6, "material": "emerald"},
     {"type": "sphere", "center": [-31, 1.6, 10], "radius": 1.6, "material": "cobalt"}
   ],
-  "render": {"max_depth": 10, "clamp": 6.0, "caustics": {"photons": 250000, "k": 40, "rmax": 0.8}},
+  "render": {
+    "max_depth": 10,
+    "clamp": 6.0,
+    "caustics": {"photons": 250000, "k": 40, "rmax": 0.8}
+  },
   "post": {"exposure": 1.0, "denoise": 5, "vignette": 0.3, "bloom": 0.08}
 }

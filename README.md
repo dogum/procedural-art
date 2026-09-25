@@ -190,11 +190,11 @@ One CPU core:
 | Photographic terrain, 3000 × 1000 | 3–12 min (resumable) |
 | Timelapse, 40 keyframes at 1200 × 400 | ~40 min (resumable) |
 | Clean still life, 2400 × 800 | ~1 hour (resumable) |
-| Painting, 3000 × 1000 | 15–50 s |
+| Painting, 3000 × 1000 | 10–60 s |
 
 ## Limits
 
-What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees and houses look game-like closer than about 300 m; city lights are boxes and window grids at 1:1; timelapse in-betweens cross-fade shadows instead of sliding them; paintings lose detail under about 3 px; organic shapes like petals are out of reach for the path tracer. The skills say so when a request lands there.
+What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees and houses look game-like closer than about 300 m; city lights are boxes and window grids at 1:1; timelapse in-betweens cross-fade shadows instead of sliding them; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. The skills say so when a request lands there.
 
 ## Repository layout
 

@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Versions follow [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### procedural-terrain-art
+- Topo on rough terrain uses illuminated contours: lines on slopes facing away from the light are heavier, so horns and ranges read as relief instead of stacked steps. Crowded intermediate contours drop out whole, and index lines that peek over a ridge are drawn light (no more dark ledges). Cones are unchanged.
+- Grand Canyon woodcut carves by depth below the rim: the gorge and shaded side canyons print black, the rim, buttes and lit walls stay paper.
+- Water layer: sea and flat lakes in view are drawn per style (coastline, sparse level lines), with `--no-water` to turn it off. A new shield landform score thins the crowded rows of broad plateaus (the Mauna Kea saddle no longer starts as a hard slab).
+- All of the above in both the Python renderer and the studio page.
+
+### procedural-realism
+- `paint.py`: a detail stage (small brushes where structure was lost, hard-edged highlights last) for oil, impasto and gouache; no more teal fringe in watercolour; `--ink-mode lines|wash|auto`, with a line-first brush drawing for objects.
+- Wine and marbles scene: reframed, a backdrop and a glow card behind the wine so it reads ruby, less grain in the glass.
+- `post_pathtrace.py`: the denoiser no longer blacks out pixels where a light is directly visible.
+
 ## [1.0.0] - 2026-09-24
 
 First public release: two Claude skills, packaged as one Claude Code plugin and as two Claude.ai skill files.

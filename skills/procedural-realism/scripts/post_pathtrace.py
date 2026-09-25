@@ -73,7 +73,7 @@ def atrous(img, alb, nrm, dep, iters, var=None, sigma_l=4.0):
                 w = k[dy + 2] * k[dx + 2] * wn * wd * wa * wl
                 acc += cn * w[..., None]; wsum += w[..., None]
                 if v is not None: vacc += sh(v) * w * w; w2sum += w
-        c = acc / np.maximum(wsum, 1e-8); lum_sig *= 0.6
+        c = np.where(wsum > 1e-8, acc / np.maximum(wsum, 1e-8), c); lum_sig *= 0.6   # no surface (light, sky): keep
         if v is not None: v = vacc / np.maximum(w2sum, 1e-8) ** 2
     return c * a
 
