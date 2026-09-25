@@ -108,7 +108,7 @@ def tonal_glazes(D, taus, sigmas, soft, rng, unit, gran, rim_px=3.0, edge=1.0, w
     return cur
 
 
-def wash_strokes(D, cur, rng, unit, detail, paper_h, M_):
+def wash_strokes(D, cur, rng, unit, detail, paper_h, M_, keep_out=None):
     """Transparent brush marks where the washes still miss detail.
 
     Strokes follow the image structure, carry the missing pigment colour,
@@ -121,8 +121,17 @@ def wash_strokes(D, cur, rng, unit, detail, paper_h, M_):
         R = max(R0 * unit, 0.8)
         Df = fblur(D, 0.6 * R)
         # darker-than-surroundings detail, plus a share of the local colour
-        res = np.clip(Df - fblur(D, 4 * R), 0, None) + M_['base'] * Df
-        r = np.clip(Df - fblur(D, 4 * R), 0, None).mean(-1)
+        # the mark carries the local pigment's hue.  (A per-channel residual
+        # would be cyan beside a saturated red object: its red channel is
+        # the one that is "darker than the surroundings".)
+        dl = Df.mean(-1)
+        r = np.clip(dl - fblur(dl, 4 * R), 0, None)
+        if keep_out is not None:
+            r = r * (1 - keep_out)          # no dark marks inside a reserved highlight
+        if R < 2.5 * unit:
+            r = r * coherence(dl, unit)     # fine marks: lines and edges, not render noise
+        chroma = np.clip(Df / (dl[..., None] + 1e-3), 0, 4)
+        res = chroma * (r + M_['base'] * dl)[..., None]
         seeds = seed_grid(r, 1.6 * R, thr / detail, rng, jitter=0.8)
         if len(seeds) == 0:
             continue
@@ -154,6 +163,25 @@ def wash_strokes(D, cur, rng, unit, detail, paper_h, M_):
     return add
 
 
+def coherence(L, unit, lo=0.25, hi=0.6):
+    """0..1: how strongly the local gradients share one direction."""
+    gy, gx = np.gradient(fblur(L, 0.6 * unit))
+    s = 2.0 * unit
+    a, b, tr = fblur(gx * gx - gy * gy, s), fblur(2 * gx * gy, s), fblur(gx * gx + gy * gy, s)
+    return smoothstep(lo, hi, np.sqrt(a * a + b * b) / (tr + 1e-9)).astype(F32)
+
+
+def highlight_mask(src, unit, P):
+    """0..1 mask of specular points and thin bright rims, with hard edges."""
+    L = luminance(fblur(src, 1.0 * unit))
+    # brighter than the surroundings at a small and a larger scale
+    top = np.maximum(L - fblur(L, 5.0 * unit), 0.6 * (L - fblur(L, 15.0 * unit)))
+    m = smoothstep(P['hl_lo'], P['hl_hi'], top) * smoothstep(0.35, 0.6, L)
+    # close the speckle of a noisy highlight into one shape, keep the edge crisp
+    m = fblur(m, P.get('hl_close', 0.8) * unit)
+    return smoothstep(0.2, 0.45, m).astype(F32)
+
+
 def watercolor(src, rng, unit, detail, P):
     H, W = src.shape[:2]
     paper_h = pm.cold_press_paper(H, W, unit, rng)
@@ -167,8 +195,12 @@ def watercolor(src, rng, unit, detail, P):
     C = np.clip(src / pc, 0.01, 1.0)
     D = -np.log(C) * P['density']
     dmax = P.get('dmax', 0)
-    if dmax > 0:                       # high-key: soft-clip the darkest passages
-        D = dmax * (1 - np.exp(-D / dmax))
+    if dmax > 0:
+        # high-key: soft-clip the darkest passages.  The clip acts on the mean
+        # density and scales the channels together, so a dark red stays a
+        # (lighter) red instead of turning grey.
+        dl = D.mean(-1, keepdims=True)
+        D = D * (dmax * (1 - np.exp(-dl / dmax)) / np.maximum(dl, 1e-4))
     gran = np.exp(-P['gran'] * paper_h)
     gran = (gran / gran.mean()).astype(F32)
     taus = np.array(P['taus'], F32) / detail ** 0.3
@@ -177,12 +209,37 @@ def watercolor(src, rng, unit, detail, P):
                        P.get('edge_px', 0.8), P.get('mottle', 0.1))
     # final accents: small dark marks where detail is still missing
     Df = fblur(D, P['detail_sigma'] * unit)
+    if P.get('lift', 0) > 0:
+        # the big light washes spill over small light shapes (a cloud layer, a
+        # rim, a sail).  A painter would have reserved them or lifted the
+        # paint: take pigment back out where the washes are clearly too dark,
+        # with the crisp edge of a lifted shape
+        Dl = fblur(D, P.get('lift_sigma', 2.0) * unit)
+        over = np.clip(cur - Dl, 0, None)
+        light = (fblur(D, 8 * unit) - Dl).mean(-1)        # lighter than the surroundings
+        m = _sigmoid(((over.mean(-1) - P['lift_thr']) / 0.015)) * smoothstep(0.03, 0.08, light)
+        m = fblur(m, 0.5 * unit)
+        cur = cur - over * (P['lift'] * m)[..., None]
+    hl = highlight_mask(src, unit, P) if P.get('reserve', 0) > 0 else None
+    hl_zone = np.clip(fblur(hl, 3.0 * unit) * 8, 0, 1) if hl is not None else None
     res = (Df - cur).mean(-1)
     acc = _sigmoid((res - P['detail_thr'] / detail) / 0.02)
-    acc = fblur(acc, 0.5 * unit)
-    cur = cur + np.clip(Df - cur, 0, None) * (acc * P['detail_frac'] * gran)[..., None]
+    if hl_zone is not None:
+        acc = acc * (1 - hl_zone)
+    # only coherent detail (lines, edges, small shapes), not render noise
+    acc = fblur(acc * coherence(Df.mean(-1), unit), 0.5 * unit)
+    dl = Df.mean(-1, keepdims=True)
+    miss = np.clip(Df - cur, 0, None).mean(-1, keepdims=True) * np.clip(Df / (dl + 1e-3), 0, 4)
+    cur = cur + miss * (acc * P['detail_frac'] * gran)[..., None]
     if P.get('marks'):
-        cur = cur + wash_strokes(D, cur, rng, unit, detail, paper_h, P['marks'])
+        cur = cur + wash_strokes(D, cur, rng, unit, detail, paper_h, P['marks'], hl_zone)
+    if P.get('reserve', 0) > 0:
+        # highlights left as bare paper, with the crisp edge of a reserved
+        # (masked-out) shape: small spots much lighter than their surroundings
+        # (back to the target's own light value: white for a specular
+        # point, a pale tint for a sunlit leaf)
+        Dh = fblur(D, 3.0 * unit)
+        cur = cur - np.clip(cur - Dh, 0, None) * (P['reserve'] * hl)[..., None]
     # granulation: pigment settles into the paper's valleys; strongest in
     # mid-density washes, weaker in heavy darks (which would turn gritty)
     cur = cur * (1 + (gran[..., None] - 1) / (1 + 1.5 * cur))
@@ -299,6 +356,30 @@ def ink_wash(src, rng, unit, detail, P):
     # local contrast: darker than the surroundings -> more ink (shadows, gullies)
     loc = np.clip(fblur(t, 25 * unit) - t, 0, None) * P['local']
     dark = np.clip(dark + loc, 0, 1.2)
+    mode = P.get('mode', 'auto')
+    if mode == 'auto':
+        mode = ink_mode_auto(src)
+    if mode == 'lines':
+        # line-first: the washes only state the big darks and the subject's
+        # shadows, in a few values; the background gets a pale tone at most
+        Q = P['lines']
+        # darker than the surroundings at two scales: cast shadows, the shadow
+        # side of each object, small dark things.  Flat passages (a plain wall)
+        # keep only a pale share of their absolute darkness.
+        # a few flat values: the lightest part of the picture stays paper,
+        # the rest is split between a pale and a dark wash
+        q0, q1 = np.percentile(dark[::3, ::3], Q['paper_pct'])
+        tone = smoothstep(q0, q1, dark)
+        rel = np.clip(fblur(t, 40 * unit) - fblur(t, 4.0 * unit), 0, None)
+        tone = np.clip(tone + Q['local'] * rel, 0, 1)
+        D = (tone ** Q['tone_gamma'] * Q['dmax'])[..., None]
+        taus = np.array(Q['taus'], F32) / detail ** 0.3
+        cur = tonal_glazes(D, taus, Q['sigmas'], P['soft'], rng, unit, 1.0, P['rim'], P['edge'],
+                           P['wobble'], Q.get('flow', P['flow']), 0.0, None, P.get('edge_px', 1.0),
+                           P.get('mottle', 0.08))[..., 0]
+        cur = cur * (1 - P['bleed']) + fblur(cur, 2.5 * unit) * P['bleed']
+        lines, hl = ink_lines(src, rng, unit, detail, P, fib, paper_h)
+        return _ink_finish(cur * (1 - 0.9 * hl) + lines, pc, fib, paper_h, rng, unit, P)
     # notan: ink goes where there is form; flat passages (sky, plain walls)
     # stay close to bare paper
     if P['empty'] < 1:
@@ -321,6 +402,15 @@ def ink_wash(src, rng, unit, detail, P):
     strokes = ink_strokes(L, tex_map, rng, unit, detail, P['strokes'])
     strokes = strokes + P['bleed'] * 0.5 * fblur(strokes, 1.5 * unit) * (0.5 + fib)
     dens = cur + strokes
+    if P.get('wash_lines'):
+        # a few thin, pale lines on long clean edges (cloud layers, ridges)
+        lines, _ = ink_lines(src, rng, unit, detail, P, fib, paper_h, P['wash_lines'], False)
+        dens = np.maximum(dens, lines) + 0.3 * np.minimum(dens, lines)
+    return _ink_finish(dens, pc, fib, paper_h, rng, unit, P)
+
+
+def _ink_finish(dens, pc, fib, paper_h, rng, unit, P):
+    H, W = dens.shape
     if P.get('deckle', 0) > 0:
         dens = dens * deckle_mask(H, W, unit, rng, P['deckle'], 0.4)
     ink = np.array(P['ink'], F32)
@@ -330,3 +420,148 @@ def ink_wash(src, rng, unit, detail, P):
     diff, _ = pm.light_height(paper_h * unit * 0.35, 1.0, blur=0.0)
     out = out * (1 + P['paper_relief'] * (diff[..., None] - 1))
     return np.clip(out, 0, 1)
+
+
+# ----------------------------------------------------------------------------
+# ink, line-first (objects): contours first, then sparse washes
+# ----------------------------------------------------------------------------
+def ink_mode_auto(src):
+    """'wash' (sumi-e landscape) when the top of the picture is a light, smooth
+    sky; otherwise 'lines' (objects, interiors, portraits on dark grounds)."""
+    H, W = src.shape[:2]
+    L = luminance(src)
+    top = src[:max(2, H // 5)]
+    Lt = L[:max(2, H // 5)]
+    gy, gx = np.gradient(fblur(L, 1.5))
+    g = np.hypot(gx, gy)
+    tex_top = float(g[:max(2, H // 5)].mean())
+    tex_all = float(g.mean()) + 1e-6
+    bright = float(Lt.mean())
+    blue = float((top[..., 2] - top[..., 0]).mean())
+    sky = (bright > 0.45 or (blue > 0.04 and bright > 0.3)) and tex_top < 0.6 * tex_all
+    return 'wash' if sky else 'lines'
+
+
+def colour_edges(src, sigma, unit):
+    """Di Zenzo colour gradient in a rough opponent space.
+
+    Returns (contrast, wx, wy): contrast ~ the step height of an edge (0..1),
+    and the doubled-angle gradient orientation in the form trace() expects.
+    """
+    Lc = luminance(src)
+    X = [Lc, 0.8 * (src[..., 0] - src[..., 1]), 0.5 * (0.5 * (src[..., 0] + src[..., 1]) - src[..., 2])]
+    Jxx = Jyy = Jxy = 0
+    for ch in X:
+        gy, gx = np.gradient(fblur(ch, sigma))
+        Jxx = Jxx + gx * gx
+        Jyy = Jyy + gy * gy
+        Jxy = Jxy + gx * gy
+    a, b = Jxx - Jyy, 2 * Jxy
+    lam = 0.5 * (Jxx + Jyy + np.sqrt(a * a + b * b))
+    contrast = np.sqrt(lam) * sigma * 2.5         # step of height c -> ~c
+    s2 = max(1.0 * unit, 0.7)
+    return contrast.astype(F32), fblur(a, s2).astype(F32), fblur(b, s2).astype(F32)
+
+
+def edge_chains(E, wx, wy, lo, hi, min_len):
+    """Canny-style thin edges: non-maximum suppression across the edge, then
+    hysteresis and removal of short chains (texture, noise)."""
+    H, W = E.shape
+    g = 0.5 * np.arctan2(wy, wx)
+    nx, ny = np.cos(g), np.sin(g)
+    cand = np.nonzero(E.ravel() > lo)[0]
+    ys, xs = np.divmod(cand, W)
+    xs = xs.astype(F32)
+    ys = ys.astype(F32)
+    e = E.ravel()[cand]
+    ddx, ddy = nx.ravel()[cand], ny.ravel()[cand]
+    m1 = bilerp(E, xs + ddx, ys + ddy)
+    m2 = bilerp(E, xs - ddx, ys - ddy)
+    keep = (e >= m1) & (e >= m2)
+    thin = np.zeros(H * W, bool)
+    thin[cand[keep]] = True
+    thin = thin.reshape(H, W)
+    lab, n = ndi.label(thin, structure=np.ones((3, 3), bool))
+    if n == 0:
+        return thin
+    size = np.bincount(lab.ravel())
+    peak = ndi.maximum(E, lab, index=np.arange(n + 1))
+    good = (size >= min_len) & (np.asarray(peak) >= hi)
+    good[0] = False
+    return good[lab]
+
+
+def sparse_seeds(mask, val, g, rng):
+    """One seed per g x g cell: the strongest masked pixel."""
+    H, W = mask.shape
+    ys, xs = np.nonzero(mask)
+    if len(ys) == 0:
+        return np.zeros((0, 2), F32)
+    g = max(1, int(round(g)))
+    cell = (ys // g) * (W // g + 1) + xs // g
+    v = val[ys, xs] + 1e-4 * rng.random(len(ys))
+    o = np.lexsort((-v, cell))
+    first = np.ones(len(o), bool)
+    first[1:] = cell[o][1:] != cell[o][:-1]
+    sel = o[first]
+    return np.stack([xs[sel], ys[sel]], 1).astype(F32)
+
+
+def ink_lines(src, rng, unit, detail, P, fib, paper_h, layers=None, keep_highlights=True):
+    """Contour strokes along the strong edges of objects: brush pressure (width)
+    follows the edge contrast, each line swells and tapers, and the tail breaks
+    into dry brush.  Returns ink density."""
+    H, W = src.shape[:2]
+    Q = P['lines']
+    out = np.zeros((H, W), F32)
+    btile = bristle_tile(rng, along=16.0, across=0.6)
+    hl = highlight_mask(src, unit, Q)
+    hl_zone = (fblur(hl, 3.0 * unit) > 0.03) if keep_highlights else np.zeros((H, W), bool)
+    lin = np.sqrt(np.clip(src, 0, 1))          # perceptual-ish: dark edges count too
+    covered = np.zeros((H, W), bool)
+    for lay in (layers or Q['layers']):
+        sig, R0, lo, hi, min_len, spacing, n_half, dmul = lay
+        R = max(R0 * unit, 0.7)
+        E, wx, wy = colour_edges(lin, sig * unit, unit)
+        thin = edge_chains(E, wx, wy, lo / detail, hi / detail, min_len * unit)
+        # painters leave highlights as bare paper: no outline around them
+        thin &= ~hl_zone
+        band = fblur(thin.astype(F32) * E, 1.2 * unit) / (fblur(thin.astype(F32), 1.2 * unit) + 0.05)
+        # coverage-aware: only edges no earlier line has drawn
+        free = thin & ~covered
+        seeds = sparse_seeds(free, E, spacing * unit, rng)
+        if len(seeds) == 0:
+            continue
+        M = len(seeds)
+        col = np.zeros(M, F32)
+        Pts, lo_, hi_ = trace(seeds, col, np.zeros((H, W), F32), wx, wy, 1.0 * R, n_half, 0.85, 10.0,
+                              stopmap=band, stopthr=0.5 * lo / detail, rng=rng)
+        P2, lo2, hi2 = smooth_subdivide(Pts, lo_, hi_)
+        # brush pressure: heavier where the edge is stronger, smoothed along the line
+        e = bilerp(E, P2[..., 0].ravel(), P2[..., 1].ravel()).reshape(P2.shape[:2])
+        pr = np.clip(0.45 + 0.75 * e / hi, 0.45, Q.get('max_pressure', 1.5))
+        pr = ndi.uniform_filter1d(pr, 5, axis=1).astype(F32)
+        width = R * np.clip(1 + 0.15 * rng.standard_normal(M), 0.7, 1.3).astype(F32)
+        key = rng.permutation(M).astype(np.int64)
+        St = Strokes(P2, lo2, hi2, width, key, taper='ink', rag=0.08, cap='round', pressure=pr)
+        zbuf, Ls = rasterize(St, H, W)
+        has, sid, un, vn = decode(zbuf, np.argsort(key))
+        covered |= ndi.binary_dilation(has.reshape(H, W), iterations=max(1, int(round(1.5 * R))))
+        ul = un * Ls[sid]
+        offu = rng.integers(0, 256, M)
+        offv = rng.integers(0, 256, M)
+        tu = ((ul / 2.0).astype(np.int32) + offu[sid]) & 255
+        tv = (((vn + 1) * width[sid] / (0.8 + 0.12 * R)).astype(np.int32) + offv[sid]) & 255
+        b = btile[tu, tv]
+        # a loaded brush at the start, running dry toward the tail
+        dryness = Q['dry'] * smoothstep(0.55, 1.0, un) + 0.12 * np.abs(vn) ** 3
+        ph = paper_h.reshape(-1)[has]
+        a = smoothstep(-0.25, 0.25, b + 0.4 * ph + 2.6 - 5.0 * dryness)
+        es = bilerp(E, seeds[:, 0], seeds[:, 1])
+        sd = dmul * np.clip(0.7 + 0.3 * es / hi, 0.7, 1.15) * (0.85 + 0.25 * rng.random(M))
+        prof = 0.75 + 0.25 * np.sqrt(np.clip(1 - vn * vn, 0, 1))
+        o = out.reshape(-1)
+        o[has] = np.maximum(o[has], sd[sid] * prof * a * (1 + 0.1 * b))
+    # a little bleed into the fibres
+    out = out + Q.get('bleed', 0.3) * fblur(out, 1.2 * unit) * (0.4 + fib)
+    return out, hl

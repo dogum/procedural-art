@@ -266,8 +266,10 @@ def smooth_subdivide(P, lo, hi, passes=1):
 class Strokes:
     """Per-stroke attributes for one layer."""
 
-    def __init__(self, P, lo, hi, width, key, taper='oil', rag=0.12, seedval=None, cap='round', capk=0.4):
+    def __init__(self, P, lo, hi, width, key, taper='oil', rag=0.12, seedval=None, cap='round', capk=0.4,
+                 pressure=None):
         self.cap, self.capk = cap, capk
+        self.pressure = pressure        # optional (M, K) width factor per path point (brush pressure)
         self.P, self.lo, self.hi = P, lo, hi
         self.width = width.astype(F32)
         self.key = key.astype(np.int64)
@@ -339,7 +341,8 @@ def rasterize(S, H, W, max_cand=3_000_000, sp=0.7, hsum=None, csum=None, wsum=No
     sin_turn = np.where(dotp < 0, 1.0, cross).astype(F32)
     u0s = u0[si, sj]
     rag = _rag_table()
-    wb = S.width[si] * (1 + 2.0 * S.rag) + 0.6            # width bound per segment
+    wmax = S.width if S.pressure is None else S.width * S.pressure.max(1)
+    wb = wmax[si] * (1 + 2.0 * S.rag) + 0.6               # width bound per segment
     ea = np.where(first, wb, wb * sin_turn + 0.7).astype(F32)
     eb = np.where(last, wb, 0.5).astype(F32)
     tlen = slen + ea + eb
@@ -376,6 +379,10 @@ def rasterize(S, H, W, max_cand=3_000_000, sp=0.7, hsum=None, csum=None, wsum=No
         u = u0s[seg] + np.clip(t, 0, ln)
         un = u / L[s]
         w = width[s] * taper_profile(S.taper, un)
+        if S.pressure is not None:
+            j0 = sj[seg]
+            f = np.clip(t / np.maximum(ln, 1e-6), 0, 1)
+            w = w * (S.pressure[s, j0] * (1 - f) + S.pressure[s, j0 + 1] * f)
         if S.rag > 0:
             ridx = ((u / np.maximum(width[s] * 0.2, 1.0)).astype(np.int32)
                     + seedoff[s] + (v > 0) * 1531) & 4095
