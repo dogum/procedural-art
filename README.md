@@ -28,6 +28,12 @@ It started as an attempt to recreate an AI-generated header of Mount Ararat with
 
 Every terrain pixel comes from SRTM-derived elevation, numpy and physics. Nothing is downloaded except elevation tiles, and no generative model is involved at any step.
 
+## Any mountain, in your browser
+
+<a href="https://dogum.github.io/procedural-art/app/"><img src="docs/media/app-demo.gif" alt="The Any mountain web app: typing Matterhorn, switching between the six print styles, then orbiting" width="840"></a>
+
+**[Any mountain](https://dogum.github.io/procedural-art/app/)** is the terrain engine as a web page. Type a peak, volcano or canyon, drag the viewpoint on the map, pick a style, and save a 3000 × 1000 header (or a LinkedIn, YouTube or wallpaper size). The page downloads 20 to 40 elevation tiles and measures the landform itself, so there is no server; a copied link reopens the same mountain, view and style. It draws with the same code as the studios below. 94 well-known peaks come with their classic viewpoint; anything else found on OpenStreetMap gets an automatic one.
+
 ## One mountain, six prints
 
 Masis and Sis (Ararat) seen from Yerevan. Same elevation grid, same hidden-line buffer, six ways of drawing it.
@@ -165,10 +171,6 @@ That exact command, unedited, on a mountain none of the tests use (15 s):
 <img src="docs/media/readme_rainier.jpg" alt="Mount Rainier from Seattle in the survey style, rendered by the command above">
 
 Each `SKILL.md` has the full workflow, and `references/` covers the engine, scene format, terrain features and painting presets.
-
-## In your browser
-
-**[Any mountain](https://dogum.github.io/procedural-art/app/)** is the terrain engine as a web page. Type a peak, volcano or canyon, drag the viewpoint on the map, pick a style, and save a 3000 × 1000 header (or a LinkedIn, YouTube or wallpaper size). The page downloads 20 to 40 elevation tiles and measures the landform itself, so there is no server; a copied link reopens the same mountain, view and style. It draws with the same code as the studios below. 94 well-known peaks come with their classic viewpoint; anything else found on OpenStreetMap gets an automatic one.
 
 ## Studios in your browser
 
