@@ -1,0 +1,103 @@
+{
+  "description": "Low sun through a window (dark boxes with an opening, out of frame) falls on white linen: a flint-glass prism fans a rainbow into the shadow, a diamond-cut paperweight, a crystal ball and a small gem sparkle. Spectral dispersion via 'abbe'. Units: cm, y up.",
+  "camera": {
+    "position": [-4.0, 36.0, -88.0],
+    "target": [-1.0, 1.0, -1.0],
+    "hfov": 40,
+    "aperture": 0.3,
+    "focus": [-2.0, 2.0, 0.0]
+  },
+  "lights": [
+    {
+      "type": "rect",
+      "center": [359.6, 132.8, 128.0],
+      "aim": [0.0, 2.0, 4.0],
+      "size": [5.5, 5.5],
+      "spot": 0,
+      "color": [1.0, 0.92, 0.8],
+      "intensity": 28000.0
+    },
+    {
+      "type": "rect",
+      "center": [-30.0, 60.0, -60.0],
+      "aim": [0.0, 0.0, 0.0],
+      "size": [60, 40],
+      "color": [0.7, 0.8, 1.0],
+      "intensity": 0.4
+    }
+  ],
+  "environment": [0.004, 0.004, 0.005],
+  "materials": {
+    "flint": {"type": "glass", "ior": 1.62, "abbe": 12, "sigma": [0.004, 0.003, 0.003]},
+    "crystal": {"type": "glass", "ior": 1.54, "abbe": 22, "sigma": [0.003, 0.002, 0.002]},
+    "linen": {"type": "diffuse", "tex": "linen", "base": [0.72, 0.68, 0.62]},
+    "wall": {"type": "diffuse", "tex": "plaster", "base": [0.06, 0.055, 0.05]},
+    "frame": {"type": "diffuse", "color": [0.05, 0.045, 0.04]}
+  },
+  "planes": [
+    {"name": "table", "point": [0, 0, 0], "normal": [0, 1, 0], "material": "linen"},
+    {"name": "wall", "point": [0, 0, 300.0], "normal": [0, 0, -1], "material": "wall"}
+  ],
+  "objects": [
+    {
+      "name": "prism (standing)",
+      "type": "prism",
+      "center": [-7.49, 4.52, -4.94],
+      "side": 6.0,
+      "length": 9.0,
+      "rot": [["x", -90], ["y", 22]],
+      "material": "flint"
+    },
+    {
+      "name": "diamond paperweight",
+      "type": "gem",
+      "center": [10.53, 2.809, 10.28],
+      "radius": 4.2,
+      "rot": [["z", -40.75], ["y", 200]],
+      "material": "crystal"
+    },
+    {"name": "crystal ball", "type": "sphere", "center": [-0.69, 3.2, 9.05], "radius": 3.2, "material": "crystal"},
+    {
+      "name": "small gem",
+      "type": "gem",
+      "center": [6.65, 1.149, 3.12],
+      "radius": 1.7,
+      "rot": [["z", -40.75], ["y", 60]],
+      "material": "crystal"
+    },
+    {
+      "name": "window wall L",
+      "type": "box",
+      "center": [4.736, 28.003, 221.995],
+      "size": [1.0, 800, 391.0],
+      "rot": [["z", 18.968], ["y", -19.058]],
+      "material": "frame"
+    },
+    {
+      "name": "window wall R",
+      "type": "box",
+      "center": [138.283, 28.003, -164.588],
+      "size": [1.0, 800, 391.0],
+      "rot": [["z", 18.968], ["y", -19.058]],
+      "material": "frame"
+    },
+    {
+      "name": "window wall top",
+      "type": "box",
+      "center": [9.219, 219.744, 7.185],
+      "size": [1.0, 394.5, 18.0],
+      "rot": [["z", 18.968], ["y", -19.058]],
+      "material": "frame"
+    },
+    {
+      "name": "window wall bottom",
+      "type": "box",
+      "center": [133.799, -163.737, 50.222],
+      "size": [1.0, 394.5, 18.0],
+      "rot": [["z", 18.968], ["y", -19.058]],
+      "material": "frame"
+    }
+  ],
+  "render": {"max_depth": 12, "clamp": 8.0, "caustics": {"photons": 300000, "k": 40, "rmax": 0.6}},
+  "post": {"exposure": 1.0, "denoise": 5, "vignette": 0.3, "bloom": 0.08}
+}

@@ -1,0 +1,96 @@
+{
+  "skill_name": "procedural-realism",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Photoreal Mount Rainier from Tacoma at golden hour, 1500x500, no AI image generator. I want to see how far pure code gets.",
+      "expected_output": "A ray-marched Rainier render lit on the camera-facing slopes, with haze and snow.",
+      "files": [],
+      "expectations": [
+        "Looked up Rainier's summit and a Tacoma viewpoint",
+        "Ran scripts/pbr_terrain.py then scripts/post_terrain.py",
+        "Rendered a small draft and looked at it before the final",
+        "Sun lights the faces the camera sees (default or explicit --sun-az), not backlit",
+        "Checked the printed peak elevation against the real ~4392 m"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Mount Hood reflected in Trillium Lake, calm water, like the classic postcard, but rendered from scratch",
+      "expected_output": "A lake-reflection render of Mount Hood using the water features.",
+      "files": [],
+      "expectations": [
+        "Used --water-level (a number near the lake surface, or auto) with low --waves for calm water",
+        "Placed the camera just above the lake near the shore",
+        "Reflection of the mountain is visible in the output",
+        "Mentioned limits honestly if trees near the camera look game-like at 1:1"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Salt Lake City lights at blue hour with the Wasatch behind, photographic",
+      "expected_output": "A blue-hour render with a city light field in front of the mountains.",
+      "files": [],
+      "expectations": [
+        "Used --time blue (or night) with --city > 0",
+        "Chose a viewpoint west of the city looking east at the Wasatch",
+        "Kept the result honest: city reads as lights at a distance, not detailed streets"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Render a tumbler of whiskey with two ice cubes and a brass coaster on a dark walnut table, window light from the left. No Blender, just math.",
+      "expected_output": "A path-traced still life defined as a JSON scene (tube glass, liquid fill, box ice, metal disk).",
+      "files": [],
+      "expectations": [
+        "Wrote a scene JSON rather than editing the renderer",
+        "Used a hollow tube (or glass with fill) for the tumbler and separate liquid, box primitives for ice",
+        "Ran low-spp drafts before adding samples to the same accumulator",
+        "Post-processed with post_pathtrace.py and presented the image"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "turn this photo into an oil painting, and then also a watercolor version so I can compare",
+      "expected_output": "Two paintings of the provided image via paint.py (oil and watercolor) plus a comparison.",
+      "files": ["evals/files/mountain_photo.jpg"],
+      "expectations": [
+        "Ran scripts/paint.py --style oil and --style watercolor on the provided file",
+        "Presented both results side by side or as a comparison sheet",
+        "Did not use any image generation model"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Sunset timelapse of Kilimanjaro from Amboseli, 6 seconds, going from golden light into night",
+      "expected_output": "An MP4 timelapse made with timelapse.py.",
+      "files": [],
+      "expectations": [
+        "Ran scripts/timelapse.py with a real Kilimanjaro summit and Amboseli viewpoint",
+        "Output is an MP4 of about 6 seconds",
+        "Rendered in resumable chunks that fit the shell time limit"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "a prism splitting sunlight into a rainbow on white linen, super crisp, for my physics class slides",
+      "expected_output": "A path-traced prism scene with dispersion, based on the shipped prism scene or a new JSON.",
+      "files": [],
+      "expectations": [
+        "Used a prism primitive with an abbe number for dispersion",
+        "Used a small, strong light (sun through a window) so the spectrum is sharp",
+        "Rendered at a slide-friendly size and presented it"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "can you render a photoreal bouquet of roses in a vase using only code?",
+      "expected_output": "An honest answer about the limits for organic shapes, with a fitting alternative.",
+      "files": [],
+      "expectations": [
+        "Explained that organic, irregular shapes like petals are a weak spot of these renderers",
+        "Offered an alternative that plays to the strengths (glass vase with water and simple forms, or a painterly finish)"
+      ]
+    }
+  ]
+}

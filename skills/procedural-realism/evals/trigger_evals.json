@@ -1,0 +1,22 @@
+[
+  {"query": "can you make a photorealistic image of Mount Hood over Trillium Lake WITHOUT using an AI image model? just code", "should_trigger": true},
+  {"query": "ray trace a crystal ball and a glass of red wine on a wooden table, python only, no blender", "should_trigger": true},
+  {"query": "what can procedural generation do these days vs dall-e? show me a realistic render made from pure math", "should_trigger": true},
+  {"query": "render Ararat at night with the city lights of Yerevan in front, photographic", "should_trigger": true},
+  {"query": "I have a screenshot of a landscape render, make it look like an oil painting with visible brush strokes", "should_trigger": true},
+  {"query": "turn this photo of my dog on the beach into a watercolor, keep it tasteful", "should_trigger": true},
+  {"query": "sunset timelapse video of the matterhorn, realistic sky and shadows, generated from elevation data", "should_trigger": true},
+  {"query": "path tracer from scratch rendering a prism rainbow for a physics explainer", "should_trigger": true},
+  {"query": "product shot of a copper sphere and glass marbles with caustics, CGI look, no 3D software", "should_trigger": true},
+  {"query": "sumi-e ink wash version of this mountain photo", "should_trigger": true},
+  {"query": "engraved line-art header of Mount Fuji for twitter, cream paper", "should_trigger": false},
+  {"query": "write a stable diffusion prompt for a photoreal alpine lake at dawn", "should_trigger": false},
+  {"query": "my Blender cycles render is noisy, which denoiser settings should I use", "should_trigger": false},
+  {"query": "how do I set up ray tracing in Unreal Engine 5 lumen for an archviz scene", "should_trigger": false},
+  {"query": "denoise and sharpen this blurry phone photo of my kids", "should_trigger": false},
+  {"query": "explain how path tracing works, conceptually, for a blog post (no images needed)", "should_trigger": false},
+  {"query": "apply an instagram-style vintage filter to these 20 jpgs in my folder", "should_trigger": false},
+  {"query": "give me tips for painting watercolor skies, I'm a beginner with real paints", "should_trigger": false},
+  {"query": "make a contour-line topographic poster of Denali", "should_trigger": false},
+  {"query": "compute the solar azimuth and elevation for Yerevan at 6pm on June 21", "should_trigger": false}
+]

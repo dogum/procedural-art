@@ -1,0 +1,20 @@
+name: Bug or bad render
+description: A script failed, or a render came out wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Include the command (or the prompt), and attach the output image if there is one.
+    validations: { required: true }
+  - type: textarea
+    id: log
+    attributes:
+      label: Error output
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "Claude Code / Claude.ai / manual; Python version; OS"

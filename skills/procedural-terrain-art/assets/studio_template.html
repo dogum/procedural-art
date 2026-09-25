@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>__PAGETITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=JetBrains+Mono:wght@400;500__FONTS__&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#efe7d6; --panel:#f7f1e4; --line:#d6cab2; --text:#2a2622; --muted:#6e6456; --accent:#c4643a; --accent-ink:#fff8ef;
+  --stage:#e6dcc6; --focus:#c4643a;
+  --serif:"Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14120f; --panel:#1c1915; --line:#342f28; --text:#ece3d1; --muted:#a39785; --accent:#e08457; --accent-ink:#1a120c;
+    --stage:#0e0c0a; --focus:#e08457; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14120f; --panel:#1c1915; --line:#342f28; --text:#ece3d1; --muted:#a39785; --accent:#e08457; --accent-ink:#1a120c;
+  --stage:#0e0c0a; --focus:#e08457; color-scheme: dark;
+}
+:root{ box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+html{ scroll-padding-top:env(safe-area-inset-top,0px); }
+*,*::before,*::after{ box-sizing:inherit; }
+body{ margin:0; background:var(--bg); color:var(--text); font-family:var(--serif); font-size:1.12rem; line-height:1.45; -webkit-font-smoothing:antialiased; }
+main{ max-width:1320px; margin:0 auto; padding:clamp(16px,3vw,40px); }
+header.top{ display:grid; grid-template-columns:1fr auto; gap:12px 24px; align-items:end; margin-bottom:22px; }
+.eyebrow{ font-family:var(--mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 6px; }
+h1{ font-weight:500; font-size:clamp(2.2rem,5.4vw,4.2rem); line-height:.95; margin:0; letter-spacing:-.01em; }
+h1 .arm{ font-family:__NATIVEFONT_CSS__, var(--serif); font-size:.55em; color:var(--muted); margin-left:.3em; vertical-align:.25em; }
+.lede{ grid-column:1/-1; max-width:68ch; margin:6px 0 0; color:var(--muted); }
+.theme-btn{ font-family:var(--mono); font-size:.72rem; background:none; border:1px solid var(--line); color:var(--muted); padding:7px 10px; border-radius:999px; cursor:pointer; }
+.stage-wrap{ position:relative; background:var(--stage); border:1px solid var(--line); border-radius:6px; overflow:hidden; box-shadow:0 30px 60px -40px rgba(0,0,0,.45); }
+canvas#art{ display:block; width:100%; aspect-ratio:3/1; height:auto; }
+.stage-bar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin:10px 0 26px; font-family:var(--mono); font-size:.72rem; color:var(--muted); }
+.status{ min-height:1.2em; }
+.btns{ display:flex; flex-wrap:wrap; gap:8px; }
+button.act{ font-family:var(--mono); font-size:.76rem; letter-spacing:.02em; border:1px solid var(--line); background:var(--panel); color:var(--text); padding:9px 14px; border-radius:4px; cursor:pointer; }
+button.act.primary{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+button.act:hover{ border-color:var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible{ outline:2px solid var(--focus); outline-offset:2px; }
+.styles{ display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:26px; }
+.tile{ all:unset; cursor:pointer; display:flex; flex-direction:column; gap:6px; }
+.tile canvas{ width:100%; aspect-ratio:3/1; display:block; border:1px solid var(--line); border-radius:4px; background:var(--stage); transition:transform .2s, border-color .2s; }
+.tile span{ font-family:var(--mono); font-size:.7rem; color:var(--muted); letter-spacing:.04em; }
+.tile[aria-pressed="true"] canvas{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+.tile[aria-pressed="true"] span{ color:var(--text); }
+.tile:hover canvas{ transform:translateY(-2px); }
+.tile:focus-visible canvas{ outline:2px solid var(--focus); outline-offset:2px; }
+.controls{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+fieldset{ border:1px solid var(--line); background:var(--panel); border-radius:6px; padding:12px 14px 14px; margin:0; min-width:0; }
+legend{ font-family:var(--mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.14em; color:var(--accent); padding:0 6px; }
+.row{ display:grid; grid-template-columns:5.8rem 1fr 3.6rem; align-items:center; gap:8px; margin:6px 0; font-size:1rem; }
+.row output{ font-family:var(--mono); font-size:.7rem; color:var(--muted); text-align:right; }
+input[type=range]{ width:100%; accent-color:var(--accent); }
+.swatches{ display:flex; gap:10px; flex-wrap:wrap; }
+.swatches label{ display:flex; flex-direction:column; align-items:center; gap:4px; font-family:var(--mono); font-size:.66rem; color:var(--muted); }
+input[type=color]{ width:44px; height:32px; border:1px solid var(--line); border-radius:4px; background:none; padding:2px; cursor:pointer; }
+.checks{ display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; margin-top:8px; }
+.checks label{ display:flex; gap:6px; align-items:center; font-size:1rem; }
+input[type=checkbox]{ accent-color:var(--accent); width:16px; height:16px; }
+.how{ display:grid; grid-template-columns:1fr 2fr; gap:28px; margin-top:44px; padding-top:26px; border-top:1px solid var(--line); }
+.how h2{ font-weight:500; font-size:1.9rem; margin:0; line-height:1.05; }
+.how ol{ margin:0; padding-left:1.2em; max-width:70ch; }
+.how li{ margin-bottom:.55em; }
+.how li b{ font-weight:600; }
+.fine{ font-family:var(--mono); font-size:.68rem; color:var(--muted); margin-top:28px; }
+dialog{ border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:8px; max-width:min(92vw,900px); padding:18px; }
+dialog img{ width:100%; height:auto; display:block; border-radius:4px; }
+dialog textarea{ width:100%; min-height:220px; font-family:var(--mono); font-size:.75rem; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; }
+@media (max-width:1000px){ .controls{ grid-template-columns:repeat(2,minmax(0,1fr)); } .styles{ grid-template-columns:repeat(3,1fr);} }
+@media (max-width:640px){
+  .controls{ grid-template-columns:1fr; } .how{ grid-template-columns:1fr; gap:12px; }
+  header.top{ grid-template-columns:1fr; } .theme-btn{ justify-self:start; }
+  .styles{ grid-template-columns:repeat(2,1fr); }
+}
+@media (prefers-reduced-motion: reduce){ .tile canvas{ transition:none; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <p class="eyebrow">Procedural terrain studio · real elevation data</p>
+      <h1>__H1__<span class="arm">__NATIVE_H1__</span></h1>
+    </div>
+    <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle light or dark page theme">◐ theme</button>
+    <p class="lede">__LEDE__ rebuilt entirely from code: satellite elevation data, a perspective camera and hidden-line removal, rendered live in your browser in six print styles. Orbit the mountain, move the light, repaint it, and save a 3000×1000 header.</p>
+  </header>
+
+  <div class="stage-wrap"><canvas id="art" role="img" aria-label="Procedurally rendered view of __NAME__"></canvas></div>
+  <div class="stage-bar">
+    <div class="status" id="status" aria-live="polite">Loading terrain…</div>
+    <div class="btns">
+      <button class="act" id="orbitBtn" type="button" aria-pressed="false">▶ Orbit</button>
+      <button class="act" id="seedBtn" type="button">Reseed</button>
+      <button class="act" id="resetBtn" type="button">Reset style</button>
+      <button class="act" id="jsonBtn" type="button">Copy settings</button>
+      <button class="act primary" id="saveBtn" type="button">Save PNG · 3000×1000</button>
+    </div>
+  </div>
+
+  <div class="styles" id="styles" role="group" aria-label="Rendering style"></div>
+
+  <form class="controls" id="controls" onsubmit="return false">
+    <fieldset><legend>Camera</legend>
+      <div class="row"><label for="yaw">Orbit</label><input type="range" id="yaw" min="-180" max="180" step="1"><output for="yaw"></output></div>
+      <div class="row"><label for="camh">Altitude</label><input type="range" id="camh" min="0.5" max="40" step="0.1"><output for="camh"></output></div>
+      <div class="row"><label for="zoom">Zoom</label><input type="range" id="zoom" min="0.5" max="2" step="0.01"><output for="zoom"></output></div>
+      <div class="row"><label for="relief">Relief</label><input type="range" id="relief" min="0.4" max="2.2" step="0.01"><output for="relief"></output></div>
+      <div class="row"><label for="panX">Pan ↔</label><input type="range" id="panX" min="-900" max="700" step="5"><output for="panX"></output></div>
+      <div class="row"><label for="panY">Pan ↕</label><input type="range" id="panY" min="-400" max="500" step="5"><output for="panY"></output></div>
+    </fieldset>
+    <fieldset><legend>Light</legend>
+      <div class="row"><label for="lightAz">Direction</label><input type="range" id="lightAz" min="-180" max="180" step="1"><output for="lightAz"></output></div>
+      <div class="row"><label for="lightEl">Height</label><input type="range" id="lightEl" min="5" max="85" step="1"><output for="lightEl"></output></div>
+      <div class="row"><label for="snow">Snowline</label><input type="range" id="snow" min="3200" max="5200" step="10"><output for="snow"></output></div>
+      <div class="row"><label for="sunY">Sun height</label><input type="range" id="sunY" min="-300" max="300" step="5"><output for="sunY"></output></div>
+    </fieldset>
+    <fieldset><legend>Ink &amp; detail</legend>
+      <div class="row"><label for="spacing">Line gap</label><input type="range" id="spacing" min="0.18" max="1.2" step="0.01"><output for="spacing"></output></div>
+      <div class="row"><label for="weight">Weight</label><input type="range" id="weight" min="0.3" max="2.5" step="0.01"><output for="weight"></output></div>
+      <div class="swatches">
+        <label>paper<input type="color" id="paper"></label>
+        <label>ink<input type="color" id="ink"></label>
+        <label>accent<input type="color" id="accent"></label>
+      </div>
+    </fieldset>
+    <fieldset><legend>Ornaments</legend>
+      <div class="checks">
+        <label><input type="checkbox" id="sun"> Sun / moon</label>
+        <label><input type="checkbox" id="network"> Network</label>
+        <label><input type="checkbox" id="labels"> Labels</label>
+        <label><input type="checkbox" id="guide"> Photo guide</label>
+      </div>
+      <p class="fine" style="margin-top:12px">Photo guide marks roughly where an X / Twitter profile picture overlaps a header. It is never included in the saved PNG.</p>
+    </fieldset>
+  </form>
+
+  <section class="how" aria-labelledby="howTitle">
+    <h2 id="howTitle">How it's made</h2>
+    <ol>
+      <li><b>Terrain.</b> A 512×512 grid of real elevation (SRTM-derived terrain tiles) around the mountain is embedded in this page, about __RES__ m per sample.</li>
+      <li><b>View.</b> The grid is resampled along the line of sight from __FROM__, rotated by the orbit angle, into rows running away from the viewer.</li>
+      <li><b>Light.</b> Surface normals from the height gradient give a shade for every point; a snowline and slope test decide where snow sits.</li>
+      <li><b>Hidden lines.</b> Rows are projected near to far with a perspective camera. A "floating horizon" per pixel column hides anything behind what's already drawn; the same buffer tells every pixel which bit of mountain it shows.</li>
+      <li><b>Style.</b> That one buffer drives everything: engraved ridgelines, true 40 m contours, pointillist dots, riso halftones with misregistration, or a woodcut with carved lines that widen in the light.</li>
+    </ol>
+  </section>
+  <p class="fine">Elevation: AWS Terrain Tiles (SRTM / public sources). Rendering: plain Canvas 2D, no libraries.</p>
+</main>
+
+<dialog id="dlg"><div id="dlgBody"></div><div class="btns" style="margin-top:12px;justify-content:flex-end"><button class="act" id="dlgClose" type="button">Close</button></div></dialog>
+
+<script>
+"use strict";
+const DEM_B64 = "__DEM__";
+/* ---------------- constants ---------------- */
+const CFG = __CONFIG__;
+const DN = CFG.DN, R = CFG.R, KSC = CFG.k, HS = CFG.hs, BASE = CFG.base_km;
+const VIEW = CFG.view;
+const U0 = -46, U1 = 46, V1 = 30, ZCAM = -95;
+const V0 = CFG.v0 ?? -35, NF = Math.min(16, -0.5 * V0);        // grid starts just in front of the viewpoint; near-edge fade width
+const AUTO = CFG.auto || {};                                     // shape-aware defaults computed by build_studio.py
+const FADEPOW = AUTO.fadePow ?? 1;                               // softer left fade for horns and canyons (dense flat rows)
+const xf = v => Math.pow(v < 0 ? 0 : v > 1 ? 1 : v, FADEPOW);
+const snowFromFrac = f => AUTO.snowline ?? Math.round((CFG.base_km + f * (CFG.peak_km - CFG.base_km)) * 1000 / 10) * 10;
+let DEM;
+function decodeDEM(){
+  const b = atob(DEM_B64), u8 = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) u8[i] = b.charCodeAt(i);
+  const u16 = new Uint16Array(u8.buffer); DEM = new Float32Array(u16.length);
+  for (let i = 0; i < u16.length; i++) DEM[i] = u16[i] / 1000;
+}
+function demAt(E, N){
+  let x = (E + R) / (2 * R) * (DN - 1), y = (R - N) / (2 * R) * (DN - 1);
+  x = Math.max(0, Math.min(DN - 1.001, x)); y = Math.max(0, Math.min(DN - 1.001, y));
+  const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * DN + x0;
+  return (DEM[i] * (1 - fx) + DEM[i + 1] * fx) * (1 - fy) + (DEM[i + DN] * (1 - fx) + DEM[i + DN + 1] * fx) * fy;
+}
+const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+function rng(seed){ let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 0) / 4294967296; }; }
+function hex(c){ const n = parseInt(c.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; }
+function rgba(c, a){ return `rgba(${Math.round(c[0]*255)},${Math.round(c[1]*255)},${Math.round(c[2]*255)},${a})`; }
+
+/* ---------------- presets ---------------- */
+const PRESETS = {
+  survey:  { name:"Survey",   yaw:0, camh:AUTO.camh ?? 3.4, zoom:1, relief:AUTO.relief ?? 1, panX:0, panY:0, fyBase:10200, hmul:1, hyBase:290,
+             lightAz:-72, lightEl:37, snow:snowFromFrac(0.754), sunY:0, spacing:0.375 * (AUTO.spacing ?? 1), weight:1, paper:"#f1e7d0", ink:"#3a4549", accent:"#ee8f54",
+             sun:true, network:false, labels:true },
+  topo:    { name:"Topo",     yaw:0, camh:AUTO.topoCamh ?? 24, zoom:1, relief:1, panX:0, panY:0, fyBase:3000, hmul:2.4, hyBase:-110,
+             lightAz:-72, lightEl:37, snow:snowFromFrac(0.754), sunY:0, spacing:0.375 * (AUTO.spacing ?? 1), weight:1, paper:"#f0e6cf", ink:"#47545c", accent:"#9ea3a3",
+             sun:false, network:true, labels:false },
+  nocturne:{ name:"Nocturne", yaw:0, camh:AUTO.camh ?? 3.4, zoom:1, relief:AUTO.relief ?? 1, panX:0, panY:0, fyBase:10200, hmul:1, hyBase:290,
+             lightAz:82, lightEl:38, snow:snowFromFrac(0.72), sunY:0, spacing:0.375 * (AUTO.spacing ?? 1), weight:1, paper:"#0b1020", ink:"#cdd9f2", accent:"#f9edc7",
+             sun:true, network:false, labels:false },
+  stipple: { name:"Stipple",  yaw:0, camh:AUTO.camh ?? 3.4, zoom:1, relief:AUTO.relief ?? 1, panX:0, panY:0, fyBase:10200, hmul:1, hyBase:290,
+             lightAz:-60, lightEl:34, snow:snowFromFrac(0.742), sunY:0, spacing:0.375 * (AUTO.spacing ?? 1), weight:1, paper:"#f6f3ec", ink:"#1f1f21", accent:"#c73829",
+             sun:false, network:false, labels:false },
+  riso:    { name:"Risograph",yaw:0, camh:AUTO.camh ?? 3.4, zoom:1, relief:AUTO.relief ?? 1, panX:0, panY:0, fyBase:10200, hmul:1, hyBase:290,
+             lightAz:-74, lightEl:38, snow:snowFromFrac(0.754), sunY:0, spacing:0.5 * (AUTO.spacing ?? 1), weight:1, paper:"#f7f3ec", ink:"#0073c2", accent:"#ff4785",
+             sun:true, network:false, labels:true },
+  woodcut: { name:"Woodcut",  yaw:0, camh:AUTO.camh ?? 3.4, zoom:1, relief:AUTO.relief ?? 1, panX:0, panY:0, fyBase:10200, hmul:1, hyBase:290,
+             lightAz:-67, lightEl:32, snow:snowFromFrac(0.73), sunY:0, spacing:0.5 * (AUTO.spacing ?? 1), weight:1, paper:"#efe7d4", ink:"#1f2126", accent:"#cc3b24",
+             sun:true, network:false, labels:true },
+};
+const ORDER = ["survey","topo","nocturne","stipple","riso","woodcut"];
+let P = { style:"survey", seed:1915, guide:false, ...structuredClone(PRESETS.survey) };
+
+/* ---------------- terrain ---------------- */
+const tCache = {};
+function buildTerrain(yaw, NX, NZ){
+  const key = yaw.toFixed(2) + "|" + NX + "|" + NZ;
+  if (tCache.key === key) return tCache.t;
+  const r = Math.hypot(VIEW[0], VIEW[1]); let dE = -VIEW[0] / r, dN = -VIEW[1] / r;
+  const c = Math.cos(yaw * Math.PI / 180), s = Math.sin(yaw * Math.PI / 180);
+  [dE, dN] = [dE * c - dN * s, dE * s + dN * c];
+  const rE = dN, rN = -dE;
+  const du = (U1 - U0) / (NX - 1), dv = (V1 - V0) / (NZ - 1);
+  const h = new Float32Array(NX * NZ);
+  for (let i = 0; i < NZ; i++){ const v = V0 + i * dv;
+    for (let j = 0; j < NX; j++){ const u = U0 + j * du;
+      h[i * NX + j] = Math.max(demAt((u * rE + v * dE) * KSC, (u * rN + v * dN) * KSC) - BASE, 0) * HS; } }
+  const toUV = (E, N) => [(E * rE + N * rN) / KSC, (E * dE + N * dN) / KSC];
+  const t = { NX, NZ, du, dv, h, toUV };
+  tCache.key = key; tCache.t = t; return t;
+}
+function lighting(t, az, el, snowAbs){
+  const { NX, NZ, du, dv, h } = t;
+  const a = az * Math.PI / 180, e = el * Math.PI / 180;
+  const L = [Math.sin(a) * Math.cos(e), -Math.cos(a) * Math.cos(e), Math.sin(e)];
+  const shade = new Float32Array(NX * NZ), snow = new Float32Array(NX * NZ);
+  const sl = (snowAbs / 1000 - BASE) * HS;
+  for (let i = 0; i < NZ; i++) for (let j = 0; j < NX; j++){
+    const k = i * NX + j;
+    const gx = (h[i * NX + Math.min(j + 1, NX - 1)] - h[i * NX + Math.max(j - 1, 0)]) / (2 * du);
+    const gz = (h[Math.min(i + 1, NZ - 1) * NX + j] - h[Math.max(i - 1, 0) * NX + j]) / (2 * dv);
+    const n = 1 / Math.hypot(gx, gz, 1);
+    shade[k] = Math.max(0, (-gx * L[0] - gz * L[1] + L[2]) * n);
+    snow[k] = clamp01((h[k] - sl) / 0.45) * clamp01(1 - Math.hypot(gx, gz) / 3);
+  }
+  t.shade = shade; t.snow = snow;
+}
+
+/* ---------------- scene / projection ---------------- */
+function makeScene(t, W, H){
+  const s = W / 3000, pre = PRESETS[P.style];
+  const fx = 4500 * P.zoom, fy = pre.fyBase * P.zoom * P.relief, cx = 2150 + P.panX, hy = pre.hyBase + P.panY, camh = P.camh, hm = pre.hmul;
+  const { NX, NZ, du, dv, h } = t;
+  const Y = new Float32Array(NZ * W), CM = new Float32Array(NZ * W);
+  for (let i = 0; i < NZ; i++){
+    const d = V0 + i * dv - ZCAM, row = i * NX;
+    for (let px = 0; px < W; px++){
+      const u = (px / s - cx) * d / fx, j = (u - U0) / du;
+      let y = Infinity;
+      if (j >= 0 && j <= NX - 1){ const j0 = Math.min(j | 0, NX - 2), f = j - j0;
+        const hh = (h[row + j0] * (1 - f) + h[row + j0 + 1] * f) * hm;
+        y = s * (hy - fy * (hh - camh) / d); }
+      Y[i * W + px] = y;
+      CM[i * W + px] = i ? Math.min(CM[(i - 1) * W + px], y) : y;
+    }
+  }
+  const sc = { t, W, H, s, fx, fy, cx, hy, camh, hm, Y, CM,
+    fadeX: cx - 1150,
+    proj(u, v, hh){ const d = v - ZCAM; return [s * (cx + fx * u / d), s * (hy - fy * (hh * hm - camh) / d)]; },
+    sampleRow(field, i, px){ const d = V0 + i * dv - ZCAM, u = (px / s - cx) * d / fx, j = (u - U0) / du;
+      if (j < 0 || j > NX - 1) return 0; const j0 = Math.min(j | 0, NX - 2), f = j - j0;
+      return field[i * NX + j0] * (1 - f) + field[i * NX + j0 + 1] * f; },
+    sil(px){ const y = CM[(NZ - 1) * W + Math.max(0, Math.min(W - 1, px | 0))]; return isFinite(y) ? y : H + 10; },
+  };
+  return sc;
+}
+function gbuffer(sc){
+  if (sc.owner) return sc.owner;
+  const { W, H, CM } = sc, NZ = sc.t.NZ, owner = new Int16Array(W * H).fill(-1);
+  for (let c = 0; c < W; c++){
+    let i = NZ - 1; const last = CM[i * W + c];
+    if (!isFinite(last)) continue;
+    const near = sc.Y[c], yEnd = isFinite(near) ? Math.min(H, Math.floor(near) + 1) : H;   // nothing below the grid's front edge
+    for (let y = Math.max(0, Math.ceil(last)); y < yEnd; y++){
+      while (i > 0 && CM[(i - 1) * W + c] <= y) i--;
+      owner[y * W + c] = i;
+    }
+  }
+  sc.owner = owner; return owner;
+}
+function pixelAttr(sc, x, y, field){
+  const o = sc.owner[y * sc.W + x]; if (o < 0) return null;
+  return sc.sampleRow(field, o, x);
+}
+
+/* ---------------- ridgelines (floating horizon) ---------------- */
+function ridgelines(ctx, sc, stepKm, fn, color){
+  const { W, Y, CM, t } = sc, { NZ, dv } = t;
+  const step = Math.max(1, Math.round(stepKm / dv)), pxStep = sc.s > 0.6 ? 1 : 1;
+  const buckets = new Map(), tol = 0.3 * sc.s;
+  for (let i = 0; i < NZ; i += step){
+    const depth = i / (NZ - 1), v = V0 + i * dv, d = v - ZCAM;
+    let prevOK = false, px0 = 0, y0 = 0;
+    for (let px = 0; px < W; px += pxStep){
+      const y = Y[i * W + px], hz = i ? CM[(i - 1) * W + px] : Infinity;
+      const vis = isFinite(y) && y < hz - tol;
+      if (vis && prevOK){
+        const u = (px / sc.s - sc.cx) * d / sc.fx;
+        const r = fn(i, px, u, v, depth);
+        if (r[0] > 0.03){
+          const ka = Math.min(15, Math.round(r[0] * 15)), kw = Math.round(r[1] * 4);
+          const key = ka * 1000 + kw; let p = buckets.get(key);
+          if (!p){ p = new Path2D(); buckets.set(key, p); }
+          p.moveTo(px0, y0); p.lineTo(px, y);
+        }
+      }
+      prevOK = vis; px0 = px; y0 = y;
+    }
+  }
+  ctx.save(); ctx.lineCap = "round";
+  for (const [key, p] of buckets){
+    const a = Math.floor(key / 1000) / 15, w = (key % 1000) / 4;
+    ctx.strokeStyle = rgba(color, a); ctx.lineWidth = Math.max(0.35, w * 2.0 * sc.s * P.weight); ctx.stroke(p);
+  }
+  ctx.restore();
+}
+function edgeFade(sc, px, u, v){
+  return xf((px / sc.s - sc.fadeX) / 450) * clamp01((46 - Math.abs(u)) / 14) * clamp01((v - V0) / NF) * clamp01((V1 - v) / 8);
+}
+
+/* ---------------- backgrounds ---------------- */
+function lowNoise(w, h, seed, oct = 5){
+  const out = new Float32Array(w * h), R_ = rng(seed); let amp = 1, tot = 0;
+  for (let o = 0; o < oct; o++){
+    const n = 3 * 2 ** o, gw = n * 3 + 2, gh = n + 2, g = new Float32Array(gw * gh);
+    for (let k = 0; k < g.length; k++) g[k] = R_() * 2 - 1;
+    for (let y = 0; y < h; y++){ const gy = y / h * (gh - 1.001), y0 = gy | 0, fy = gy - y0;
+      for (let x = 0; x < w; x++){ const gx = x / w * (gw - 1.001), x0 = gx | 0, fx = gx - x0;
+        const a = g[y0 * gw + x0] * (1 - fx) + g[y0 * gw + x0 + 1] * fx, b = g[(y0 + 1) * gw + x0] * (1 - fx) + g[(y0 + 1) * gw + x0 + 1] * fx;
+        out[y * w + x] += amp * (a * (1 - fy) + b * fy); } }
+    tot += amp; amp *= 0.55;
+  }
+  for (let k = 0; k < out.length; k++) out[k] /= tot; return out;
+}
+function paperImage(W, H, tint, seed, vign = 0.13, grain = 0.03){
+  const img = new ImageData(W, H), d = img.data, lw = Math.max(40, W >> 3), lh = Math.max(14, H >> 3);
+  const blot = lowNoise(lw, lh, seed), R_ = rng(seed * 7 + 3);
+  for (let y = 0; y < H; y++){ const ly = Math.min(lh - 1, y * lh / H | 0);
+    for (let x = 0; x < W; x++){
+      const b = blot[ly * lw + Math.min(lw - 1, x * lw / W | 0)];
+      const vx = (x - W / 2) / (W * 0.62), vy = (y - H / 2) / (H * 0.75), v = 1 - vign * Math.min(1.4, vx * vx + vy * vy);
+      const g = (R_() - 0.5) * grain, k = (y * W + x) * 4;
+      d[k]   = 255 * clamp01((tint[0] + b * 0.035 + g) * v);
+      d[k+1] = 255 * clamp01((tint[1] + b * 0.04 + g) * v);
+      d[k+2] = 255 * clamp01((tint[2] + b * 0.05 + g) * v);
+      d[k+3] = 255;
+    } }
+  return img;
+}
+function clipSky(ctx, sc){
+  const p = new Path2D(); p.moveTo(0, -5); p.lineTo(sc.W, -5);
+  for (let x = sc.W - 1; x >= 0; x -= 2) p.lineTo(x, sc.sil(x) - 1);
+  p.lineTo(0, sc.sil(0)); p.closePath(); ctx.clip(p);
+}
+function peaks(sc){
+  const t = sc.t, out = [];
+  for (const EN of CFG.peaks.map(p => [p.E, p.N])){
+    const [u, v] = t.toUV(EN[0], EN[1]);
+    const ic = Math.round((v - V0) / t.dv), jc = Math.round((u - U0) / t.du);
+    let best = -1, bi = ic, bj = jc; const rw = Math.max(3, Math.round(1.5 / t.du)), rv = Math.max(3, Math.round(1.5 / t.dv));
+    for (let i = Math.max(0, ic - rv); i <= Math.min(t.NZ - 1, ic + rv); i++)
+      for (let j = Math.max(0, jc - rw); j <= Math.min(t.NX - 1, jc + rw); j++)
+        if (t.h[i * t.NX + j] > best){ best = t.h[i * t.NX + j]; bi = i; bj = j; }
+    out.push(sc.proj(U0 + bj * t.du, V0 + bi * t.dv, best));
+  }
+  return out;
+}
+
+function sunAnchor(pk, s){ return pk.length > 1 ? [(pk[0][0] + pk[1][0]) / 2, (pk[0][1] + pk[1][1]) / 2] : [pk[0][0] - 420 * s, pk[0][1] + 120 * s]; }
+/* Keep the legacy sun spot unless the disc is mostly buried or sits on a jagged skyline; then search along
+   the skyline for a calmer place. Same rules as sun_spot() in terrain_art.py. */
+function labelSpans(sc, pk){
+  const s = sc.s; return CFG.peaks.map((q, k) => [pk[k], q.name, k]).filter(r => r[0] && r[1])
+    .map(([p, n, k]) => k % 2 === 0 ? [p[0] - 60 * s, p[0] + 360 * s] : [p[0] - 360 * s, p[0] + 60 * s]);
+}
+function sunSpot(sc, c, r, peak, avoid = [], target = 0.72, lo = 0.4, jagMax = 0.22){
+  const { W, H, s } = sc, fade = x => xf((x / s - sc.fadeX) / 450);
+  const score = (x, y) => {
+    let n = 0, vis = 0;
+    for (let a = 0; a < 48; a++) for (let q = 0; q < 10; q++){
+      const rr = Math.sqrt(0.02 + 0.98 * q / 9) * r, px = Math.max(0, Math.min(W - 1, Math.floor(x + Math.cos(a * Math.PI / 24) * rr))), py = y + Math.sin(a * Math.PI / 24) * rr;
+      n++; if (py < sc.sil(px) || fade(px) < 0.05) vis++; }
+    const span = []; for (let px = Math.max(0, Math.floor(x - r)); px < Math.min(W, x + r); px++){ const y_ = sc.sil(px); if (y_ < H) span.push(y_); }
+    let jag = 0;
+    if (span.length > 3){ const d = span.slice(1).map((v, i) => v - span[i]), m = d.reduce((a, b) => a + b, 0) / d.length;
+      jag = Math.sqrt(d.reduce((a, b) => a + (b - m) ** 2, 0) / d.length) * 6 / r; }
+    return [vis / n, jag];
+  };
+  const [v0_, j0] = score(c[0], c[1]);
+  if (v0_ >= lo && j0 <= jagMax && c[1] - r > -0.2 * r) return c;
+  let best = c, bs = -1e9;
+  for (let x = Math.max((sc.fadeX + 250) * s, r + 30 * s); x < W - r - 30 * s; x += r / 3){
+    if (peak && Math.abs(x - peak[0]) < r + 110 * s) continue;
+    if (avoid.some(([a0, a1]) => x + r > a0 && x - r < a1)) continue;
+    const seg = []; for (let px = Math.max(0, Math.floor(x - r)); px < Math.min(W, x + r); px++){ const y_ = sc.sil(px); if (y_ < H) seg.push(y_); }
+    if (!seg.length) continue; seg.sort((a, b) => a - b); const yb = seg[seg.length >> 1];
+    for (const f of [-1.3, -0.9, -0.5, -0.2, 0.1]){
+      const y = yb + f * r; if (y - r < 0.05 * H || y + r > 0.92 * H) continue;
+      const [v, j] = score(x, y);
+      let sc_ = -3 * Math.abs(v - target) - 1.5 * Math.max(j - 0.1, 0) - 0.6 * Math.abs(x - c[0]) / W - 0.4 * Math.abs(y - c[1]) / H;
+      if (v < lo) sc_ -= 2;
+      if (sc_ > bs){ bs = sc_; best = [x, y]; }
+    }
+  }
+  return best;
+}
+/* Vertical pan (reference px) that keeps the skyline clear of the top edge and the foreground clear of the
+   bottom edge. Same rules as fit_offset() in render.py; only used for horns and canyons (AUTO.fit). */
+function autoPanY(st){
+  if (!AUTO.fit) return 0;
+  const saved = P; P = { style: st, seed: saved.seed, ...structuredClone(PRESETS[st]), panY: 0 };
+  const t = buildTerrain(0, 300, 260), sc = makeScene(t, 900, 300); P = saved;
+  const { s, W, H } = sc, Href = H / s, sil = [], yb = [], ib = Math.min(t.NZ - 1, Math.ceil(0.5 * NF / t.dv));
+  for (let x = 0; x < W; x++){ if (x / s <= sc.fadeX + 300) continue; const y = sc.CM[(t.NZ - 1) * W + x]; if (isFinite(y)) sil.push(y / s);
+    const yy = sc.Y[ib * W + x]; if (isFinite(yy)) yb.push(yy / s); }
+  if (!sil.length) return 0;
+  sil.sort((a, b) => a - b); yb.sort((a, b) => a - b);
+  const top = sil[Math.floor(0.02 * (sil.length - 1))], bottom = yb.length ? yb[yb.length >> 1] : top + 400;
+  const loTop = (PRESETS[st].labels ? 0.21 : 0.12) * Href, hiBot = 0.9 * Href, needMin = loTop - top, needMax = hiBot - bottom;
+  let dy = 0;
+  if (needMin > 0) dy = needMin; else if (needMax < 0) dy = Math.max(needMax, needMin);
+  else if (bottom < 0.55 * Href) dy = Math.max(0, Math.min(0.55 * Href - bottom, 0.28 * Href - top));
+  return Math.round(dy);
+}
+/* ---------------- ornaments ---------------- */
+function drawSunDisc(ctx, sc, c, r, col, alpha, hatch){
+  ctx.save(); clipSky(ctx, sc);
+  const g = ctx.createRadialGradient(c[0], c[1], r * 0.9, c[0], c[1], r + 420 * sc.s);
+  g.addColorStop(0, rgba(col, 0.14)); g.addColorStop(1, rgba(col, 0));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, sc.W, sc.H);
+  ctx.fillStyle = rgba(col, alpha); ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, 7); ctx.fill();
+  if (hatch){ ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, 7); ctx.clip(); ctx.fillStyle = "rgba(0,0,0,0.07)";
+    for (let y = c[1] - r; y < c[1] + r; y += 9 * sc.s) ctx.fillRect(c[0] - r, y, 2 * r, Math.max(1, 1.2 * sc.s)); }
+  ctx.restore();
+}
+function drawNetwork(ctx, sc, pk, col, dashed, R_){
+  const t = sc.t, pts = pk.map(p => [p[0], p[1]]);
+  owner: for (let k = 0; k < 900 && pts.length < 18; k++){
+    const u = -30 + R_() * 70, v = -25 + R_() * 47;
+    const i = Math.round((v - V0) / t.dv), j = Math.round((u - U0) / t.du);
+    const hh = t.h[i * t.NX + j]; const [x, y] = sc.proj(u, v, hh);
+    if (x < sc.fadeX * sc.s + 150 * sc.s || x > sc.W - 50 * sc.s || y > sc.H * 0.86 || y < sc.H * 0.2) continue;
+    const ii = Math.max(0, i - 1);
+    if (y > sc.CM[ii * sc.W + Math.round(x)] + 2) continue;
+    for (const q of pts) if (Math.hypot(q[0] - x, q[1] - y) < 140 * sc.s) continue owner;
+    pts.push([x, y]);
+  }
+  ctx.save(); ctx.strokeStyle = rgba(col, dashed ? 0.5 : 0.6); ctx.lineWidth = Math.max(0.6, 1.4 * sc.s);
+  if (dashed) ctx.setLineDash([14 * sc.s, 12 * sc.s]);
+  const seen = new Set();
+  pts.forEach((p, a) => {
+    pts.map((q, b) => [Math.hypot(p[0] - q[0], p[1] - q[1]), b]).filter(z => z[1] !== a).sort((x, y) => x[0] - y[0]).slice(0, 2)
+      .forEach(([dd, b]) => { const k = Math.min(a, b) + "-" + Math.max(a, b); if (seen.has(k) || dd > 520 * sc.s) return; seen.add(k);
+        ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(pts[b][0], pts[b][1]); ctx.stroke(); });
+  });
+  ctx.setLineDash([]);
+  pts.forEach((p, k) => { const r = (k < 2 ? 9 : 4 + R_() * 3) * sc.s;
+    ctx.fillStyle = rgba(col, 0.9); ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, 7); ctx.fill();
+    ctx.strokeStyle = rgba(col, 0.7); ctx.beginPath(); ctx.arc(p[0], p[1], r + 6 * sc.s, 0, 7); ctx.stroke(); });
+  ctx.restore();
+}
+function drawLabels(ctx, sc, pk, col, font){
+  ctx.save(); ctx.fillStyle = rgba(col, 0.85); ctx.strokeStyle = rgba(col, 0.6); ctx.lineWidth = Math.max(0.6, 1.6 * sc.s);
+  CFG.peaks.map((q, k) => [pk[k], q.name, q.sub, k % 2 ? -1 : 1]).filter(r => r[0] && r[1] && xf((r[0][0] / sc.s - sc.fadeX) / 450) >= 0.35).forEach(([p, n, e, sd]) => {
+    ctx.textAlign = sd > 0 ? "left" : "right";
+    ctx.font = `${36 * sc.s}px ${font}`;
+    // lift the label above the skyline if terrain would run through the text (canyon rims, ranges)
+    const w = Math.max(ctx.measureText(n).width, 0.66 * ctx.measureText(e || "").width);
+    const x0 = sd > 0 ? p[0] + 20 * sc.s : p[0] - 40 * sc.s - w, x1 = sd > 0 ? p[0] + 40 * sc.s + w : p[0] - 20 * sc.s;
+    let mn = Infinity; for (let x = Math.max(0, Math.floor(x0)); x < Math.min(sc.W, x1); x++) mn = Math.min(mn, sc.sil(x));
+    const lift = Math.min(Math.max(0, (p[1] - 30 * sc.s) - (mn - 14 * sc.s)), Math.max(0, p[1] - 110 * sc.s));
+    ctx.fillText(n, p[0] + 30 * sc.s * sd, p[1] - 70 * sc.s - lift);
+    ctx.font = `${24 * sc.s}px ${CFG.labelFont}`; ctx.fillText(e, p[0] + 30 * sc.s * sd, p[1] - 38 * sc.s - lift);
+    ctx.beginPath(); ctx.moveTo(p[0] + 10 * sc.s * sd, p[1] - 12 * sc.s); ctx.lineTo(p[0] + 26 * sc.s * sd, p[1] - 34 * sc.s - lift); ctx.stroke();
+  });
+  ctx.restore();
+}
+function footnote(ctx, sc, text, col, a = 0.6){
+  ctx.save(); ctx.fillStyle = rgba(col, a); ctx.textAlign = "right";
+  ctx.font = `italic ${21 * sc.s}px "Cormorant Garamond", Georgia, serif`; ctx.fillText(text, sc.W - 60 * sc.s, sc.H - 55 * sc.s); ctx.restore();
+}
+
+/* ---------------- styles ---------------- */
+function lineCommon(sc){ return { t: sc.t, sh: sc.t.shade, sn: sc.t.snow, h: sc.t.h }; }
+
+function renderSurvey(ctx, sc){
+  const { W, H, s } = sc, paper = hex(P.paper), ink = hex(P.ink), acc = hex(P.accent), R_ = rng(P.seed);
+  ctx.putImageData(paperImage(W, H, paper, P.seed), 0, 0);
+  const pk = peaks(sc);
+  if (P.sun){ const a = sunAnchor(pk, s), c0 = [a[0] - 20 * s, a[1] + (30 + P.sunY) * s], c = P.sunY ? c0 : sunSpot(sc, c0, 135 * s, pk[0], P.labels ? labelSpans(sc, pk) : []); drawSunDisc(ctx, sc, c, 135 * s, acc, 0.45, true); }
+  const { h, sh, sn } = lineCommon(sc);
+  ridgelines(ctx, sc, P.spacing, (i, px, u, v, dep) => {
+    const hh = sc.sampleRow(h, i, px), l = sc.sampleRow(sh, i, px), w = sc.sampleRow(sn, i, px);
+    const pres = (0.03 + 0.81 * Math.pow(clamp01((hh - 0.15) / 0.9), 0.8)) * edgeFade(sc, px, u, v);
+    return [pres * (0.95 - 0.55 * dep) * (0.35 + 0.75 * (1 - l)) * (1 - 0.8 * w), 1.25 - 0.6 * dep];
+  }, ink);
+  // inked silhouette
+  ctx.save(); ctx.lineWidth = 2.6 * s * P.weight;
+  for (let x = 1; x < W; x += 2){ const y0 = sc.sil(x - 2), y1 = sc.sil(x);
+    const a = xf((x / s - sc.fadeX) / 450) * clamp01(((sc.hy + 270) * s - y1) / (120 * s)) * 0.9;
+    if (a < 0.03 || y1 > H) continue; ctx.strokeStyle = rgba(ink.map(c => c * 0.8), a);
+    ctx.beginPath(); ctx.moveTo(x - 2, y0); ctx.lineTo(x, y1); ctx.stroke(); }
+  ctx.restore();
+  if (P.network) drawNetwork(ctx, sc, pk, acc, true, R_);
+  if (P.labels){ drawLabels(ctx, sc, pk, ink, CFG.labelFont);
+    footnote(ctx, sc, CFG.footnote, ink); }
+}
+
+function renderTopo(ctx, sc){
+  const { W, H, s, t } = sc, paper = hex(P.paper), ink = hex(P.ink), acc = hex(P.accent), R_ = rng(P.seed);
+  ctx.putImageData(paperImage(W, H, paper, P.seed + 4), 0, 0);
+  const { NX, NZ, du, dv, h } = t, stepH = 0.04 * (P.spacing / 0.375);
+  const thin = new Path2D(), thick = new Path2D(), faint = new Path2D();
+  const edge = (a, b, lev) => { const f = (lev - a) / (b - a); return f; };
+  function vis(u, v, x, y){
+    const i = Math.max(0, Math.min(NZ - 1, Math.floor((v - V0) / dv) - 1)), px = Math.round(x);
+    if (px < 0 || px >= W) return false; return y <= sc.CM[i * W + px] + 2 * s;
+  }
+  let li = 0;
+  for (let lev = 0.12; lev < 4.4; lev += stepH, li++){
+    const idx = li % 5 === 0, fadeL = Math.max(0.15, Math.min(1, lev / 0.6));
+    for (let i = 0; i < NZ - 1; i++){ const va = V0 + i * dv, vb = va + dv;
+      for (let j = 0; j < NX - 1; j++){
+        const a = h[i*NX+j], b = h[i*NX+j+1], c = h[(i+1)*NX+j+1], d = h[(i+1)*NX+j];
+        const code = (a > lev) | (b > lev) << 1 | (c > lev) << 2 | (d > lev) << 3;
+        if (code === 0 || code === 15) continue;
+        const ua = U0 + j * du, ub = ua + du, P_ = [];
+        if ((a > lev) !== (b > lev)) P_.push([ua + edge(a, b, lev) * du, va]);
+        if ((b > lev) !== (c > lev)) P_.push([ub, va + edge(b, c, lev) * dv]);
+        if ((d > lev) !== (c > lev)) P_.push([ua + edge(d, c, lev) * du, vb]);
+        if ((a > lev) !== (d > lev)) P_.push([ua, va + edge(a, d, lev) * dv]);
+        for (let k = 0; k + 1 < P_.length; k += 2){
+          const [u1, v1] = P_[k], [u2, v2] = P_[k + 1];
+          const p1 = sc.proj(u1, v1, lev), p2 = sc.proj(u2, v2, lev);
+          if (!vis(u1, v1, p1[0], p1[1]) || !vis(u2, v2, p2[0], p2[1])) continue;
+          const f = edgeFade(sc, p1[0], u1, v1) * fadeL; if (f < 0.05) continue;
+          const tgt = f < 0.45 ? faint : idx ? thick : thin;
+          tgt.moveTo(p1[0], p1[1]); tgt.lineTo(p2[0], p2[1]);
+        } } } }
+  ctx.save(); ctx.lineCap = "round";
+  ctx.strokeStyle = rgba(ink, 0.22); ctx.lineWidth = 1.1 * s * P.weight; ctx.stroke(faint);
+  ctx.strokeStyle = rgba(ink, 0.5); ctx.lineWidth = 1.4 * s * P.weight; ctx.stroke(thin);
+  ctx.strokeStyle = rgba(ink, 0.85); ctx.lineWidth = 2.6 * s * P.weight; ctx.stroke(thick);
+  ctx.restore();
+  const pk = peaks(sc);
+  if (P.sun){ const a = sunAnchor(pk, s), c = [a[0], a[1] - (60 - P.sunY) * s]; drawSunDisc(ctx, sc, c, 110 * s, hex("#ee8f54"), 0.35, true); }
+  if (P.network) drawNetwork(ctx, sc, pk, acc.map(c => c * 0.75), false, R_);
+  if (P.labels) drawLabels(ctx, sc, pk, ink, CFG.labelFont);
+  footnote(ctx, sc, `contour interval ≈ ${Math.round(stepH / HS * 100) * 10} m`, ink, 0.55);
+}
+
+function renderNocturne(ctx, sc){
+  const { W, H, s } = sc, sky = hex(P.paper), ink = hex(P.ink), moon = hex(P.accent), R_ = rng(P.seed);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, rgba(sky.map(c => c * 0.55), 1)); g.addColorStop(1, rgba(sky.map(c => Math.min(1, c * 1.9 + 0.03)), 1));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const skyOK = (x, y) => { const f = xf((x / s - sc.fadeX) / 450); const m = y < sc.sil(x) - 1 ? 1 : 1 - f;
+    return m * (1 - clamp01((y / s - (sc.hy + 90)) / 260) * (1 - f)); };
+  // milky band: blobs on a tiny canvas, upscaled = soft glow
+  { const bw = Math.max(60, W >> 3), bh = Math.max(20, H >> 3), band = new OffscreenCanvas(bw, bh), b = band.getContext("2d");
+    for (let k = 0; k < 500; k++){ const x = R_() * bw, y = 0.35 * x - 350 * s / 8 + (R_() - 0.5) * 380 * s / 8;
+      const a = skyOK(x * 8, y * 8); if (a <= 0) continue;
+      b.fillStyle = `rgba(150,165,230,${0.05 * a})`; b.beginPath(); b.arc(x, y, (2 + R_() * 7) * s * 8 / 8, 0, 7); b.fill(); }
+    ctx.save(); ctx.imageSmoothingQuality = "high"; ctx.drawImage(band, 0, 0, W, H); ctx.restore(); }
+  for (let k = 0; k < 2600; k++){
+    const x = R_() * W, y = R_() * H, m = Math.min(6, 0.3 + 1 / Math.pow(R_() + 0.01, 0.45) - 1);
+    if (R_() > 1.15 - y / (650 * s)) continue; const a = skyOK(x, y); if (a <= 0) continue;
+    const r = Math.max(0.5, (0.6 + m * 0.35) * s);
+    if (m > 2.5){ const gg = ctx.createRadialGradient(x, y, 0, x, y, r * 7); gg.addColorStop(0, `rgba(210,220,255,${0.25 * a})`); gg.addColorStop(1, "rgba(210,220,255,0)"); ctx.fillStyle = gg; ctx.fillRect(x - r * 7, y - r * 7, r * 14, r * 14); }
+    ctx.fillStyle = `rgba(225,232,255,${Math.min(1, 0.25 + m * 0.18) * a})`; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  }
+  if (P.sun){ const mc = [(sc.cx - 670) * s, (sc.hy - 120 + P.sunY) * s], mr = 34 * s;
+    ctx.save(); clipSky(ctx, sc);
+    const hg = ctx.createRadialGradient(mc[0], mc[1], 0, mc[0], mc[1], 200 * s); hg.addColorStop(0, "rgba(160,175,220,0.16)"); hg.addColorStop(1, "rgba(160,175,220,0)");
+    ctx.fillStyle = hg; ctx.fillRect(mc[0] - 220 * s, mc[1] - 220 * s, 440 * s, 440 * s);
+    const mcv = new OffscreenCanvas(Math.ceil(mr * 2 + 4), Math.ceil(mr * 2 + 4)), m = mcv.getContext("2d"), o = mr + 2;
+    m.fillStyle = rgba(moon, 1); m.beginPath(); m.arc(o, o, mr, 0, 7); m.fill();
+    m.globalCompositeOperation = "destination-out"; m.beginPath(); m.arc(o + 14 * s, o - 8 * s, mr * 0.92, 0, 7); m.fill();
+    ctx.drawImage(mcv, mc[0] - o, mc[1] - o); ctx.restore(); }
+  // darken mountain body so stars never shine through
+  ctx.save(); ctx.fillStyle = rgba(sky.map(c => c * 0.9 + 0.02), 0.5);
+  for (let x = 0; x < W; x += 2){ const f = xf((x / s - sc.fadeX) / 450); if (f <= 0) continue; const y = sc.sil(x);
+    ctx.globalAlpha = f; ctx.fillRect(x, y, 2, H - y); } ctx.restore();
+  const { h, sh, sn } = lineCommon(sc);
+  ridgelines(ctx, sc, P.spacing, (i, px, u, v, dep) => {
+    const hh = sc.sampleRow(h, i, px), l = sc.sampleRow(sh, i, px), w = sc.sampleRow(sn, i, px);
+    const pres = (0.02 + 0.98 * Math.pow(clamp01((hh - 0.2) / 1.0), 0.9)) * edgeFade(sc, px, u, v);
+    return [pres * (1 - 0.6 * dep) * (0.18 + 1.05 * Math.pow(l, 1.5) + 0.8 * w), 1.15 - 0.5 * dep];
+  }, ink);
+  if (P.labels){ const pk = peaks(sc); drawLabels(ctx, sc, pk, ink, CFG.labelFont); }
+}
+
+function renderStipple(ctx, sc){
+  const { W, H, s, t } = sc, paper = hex(P.paper), ink = hex(P.ink), acc = hex(P.accent), R_ = rng(P.seed);
+  ctx.putImageData(paperImage(W, H, paper, P.seed + 8, 0.06, 0.02), 0, 0);
+  const owner = gbuffer(sc);
+  // normalize shade over visible mountain pixels
+  const vals = [];
+  for (let k = 0; k < 6000; k++){ const x = R_() * W | 0, y = R_() * H | 0; const o = owner[y * W + x]; if (o < 0) continue;
+    if (sc.sampleRow(t.h, o, x) < 0.5) continue; vals.push(sc.sampleRow(t.shade, o, x)); }
+  vals.sort((a, b) => a - b); const lo = vals[(vals.length * 0.03) | 0] ?? 0.2, hi = vals[(vals.length * 0.97) | 0] ?? 0.9;
+  const sp = 2.3 * s / Math.sqrt(P.weight), path = new Path2D(); let n = 0;
+  for (let gy = 0; gy < H; gy += sp) for (let gx = 0; gx < W; gx += sp){
+    const x = Math.min(W - 1, gx + R_() * sp | 0), y = Math.min(H - 1, gy + R_() * sp | 0), o = owner[y * W + x];
+    if (o < 0) continue;
+    const hh = sc.sampleRow(t.h, o, x), l = sc.sampleRow(t.shade, o, x), w = sc.sampleRow(t.snow, o, x);
+    const d = V0 + o * t.dv - ZCAM, u = (x / s - sc.cx) * d / sc.fx;
+    let pres = Math.pow(clamp01((hh - 0.2) / 1.7), 1.2) * xf((x / s - sc.fadeX) / 450) * clamp01((46 - Math.abs(u)) / 14) * clamp01((d + ZCAM - V0) / NF);
+    const dark = clamp01((hi - l) / (hi - lo + 1e-6));
+    let tone = pres * (0.10 + 0.85 * Math.pow(dark, 1.3)) * (1 - 0.85 * w);
+    const oy = owner[Math.min(H - 1, y + 2) * W + x], oyu = owner[Math.max(0, y - 2) * W + x];
+    if (oy >= 0 && oyu >= 0) tone += 0.55 * clamp01(Math.abs(oy - oyu) / (4 / (t.dv / 0.125))) * pres;
+    if (R_() < Math.pow(clamp01(tone), 1.1) * 1.05){ const r = (0.55 + R_() * 0.75) * s * 1.5; path.moveTo(x + r, y); path.arc(x, y, r, 0, 7); n++; }
+  }
+  ctx.fillStyle = rgba(ink, 1); ctx.fill(path);
+  const pk = peaks(sc);
+  if (P.sun || true){ ctx.fillStyle = rgba(acc, 1); ctx.beginPath(); ctx.arc(pk[0][0], pk[0][1] - 22 * s, 6 * s, 0, 7); ctx.fill(); }
+  if (P.labels) drawLabels(ctx, sc, pk, ink, CFG.labelFont);
+  footnote(ctx, sc, `${CFG.name}  ·  ${n.toLocaleString()} dots`, ink, 0.65);
+}
+
+function renderRiso(ctx, sc){
+  const { W, H, s, t } = sc, paper = hex(P.paper), BLUE = hex(P.ink), PINK = hex(P.accent);
+  // blue layer: ridgelines + type, drawn black on a transparent canvas
+  const bl = new OffscreenCanvas(W, H), bctx = bl.getContext("2d");
+  const { h, sh } = lineCommon(sc);
+  ridgelines(bctx, sc, P.spacing, (i, px, u, v, dep) => {
+    const hh = sc.sampleRow(h, i, px), l = sc.sampleRow(sh, i, px);
+    return [Math.pow(clamp01((hh - 0.15) / 0.9), 0.8) * edgeFade(sc, px, u, v) * (0.5 + 0.8 * (1 - l)), 1.6 - 0.7 * dep];
+  }, [0, 0, 0]);
+  if (P.labels){ bctx.fillStyle = "#000"; bctx.font = `500 ${128 * s}px ${CFG.titleFont}`; bctx.fillText(CFG.native, 120 * s, 190 * s);
+    bctx.font = `500 ${25 * s}px "JetBrains Mono", monospace`; bctx.fillText(CFG.risoSub, 124 * s, 245 * s); }
+  const bdata = bctx.getImageData(0, 0, W, H).data;
+  const owner = gbuffer(sc), pk = peaks(sc);
+  const sAnc = sunAnchor(pk, s), sunR = 210 * s, sun0 = [sAnc[0] + 10 * s, sAnc[1] + (10 + P.sunY) * s], sun = P.sunY ? sun0 : sunSpot(sc, sun0, sunR, pk[0]);
+  const img = ctx.createImageData(W, H), d = img.data, R_ = rng(P.seed + 11);
+  const cell = 11 * s, cell2 = 7 * s, ca = Math.cos(0.26), sa = Math.sin(0.26);
+  const ht = (x, y, tone, c) => { const X = x * ca + y * sa, Y = -x * sa + y * ca;
+    const fx = ((X % c) + c) % c - c / 2, fy = ((Y % c) + c) % c - c / 2;
+    return clamp01(c * 0.62 * Math.sqrt(clamp01(tone)) - Math.hypot(fx, fy) + 0.5); };
+  const offX = Math.round(5 * s), offY = Math.round(-3 * s);
+  const pinkAt = (x, y) => {
+    if (x < 0 || y < 0 || x >= W || y >= H) return 0;
+    const f = xf((x / s - sc.fadeX) / 450);
+    let skyM = y < sc.sil(x) - 1 ? 1 : 1 - f;
+    skyM *= 1 - clamp01((y / s - (sc.hy + 40)) / 250) * (1 - f);
+    const dd = Math.hypot(x - sun[0], y - sun[1]);
+    let p = ht(x, y, Math.pow(clamp01(1 - dd / (1300 * s)), 1.8) * 0.75 * skyM, cell) * skyM;
+    if (P.sun) p = Math.max(p, clamp01((sunR - dd) / 1.5) * skyM * 0.92);
+    const o = owner[y * W + x];
+    if (o >= 0){ const hh = sc.sampleRow(t.h, o, x), l = sc.sampleRow(t.shade, o, x);
+      const pres = clamp01((hh - 0.15) / 1.3) * f * clamp01(o * t.dv / NF); if (pres > 0) p = Math.max(p, ht(x, y, pres * l * l * 0.55, cell2)); }
+    return p;
+  };
+  const vx = 0.03;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
+    const k = (y * W + x) * 4, tex = 1 - 0.18 * R_() * R_();
+    const pc = pinkAt(x - offX, y - offY) * tex, bc = Math.min(1, bdata[k + 3] / 255 * 1.15) * Math.min(1, tex + 0.1);
+    const g = (R_() - 0.5) * 0.02;
+    for (let ch = 0; ch < 3; ch++) d[k + ch] = 255 * clamp01((paper[ch] + g) * (1 - pc * (1 - PINK[ch])) * (1 - bc * (1 - BLUE[ch])));
+    d[k + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function renderWoodcut(ctx, sc){
+  const { W, H, s, t } = sc, paper = hex(P.paper), ink = hex(P.ink), red = hex(P.accent), R_ = rng(P.seed + 13);
+  const img = paperImage(W, H, paper, P.seed + 13, 0.1), d = img.data;
+  const owner = gbuffer(sc), pk = peaks(sc);
+  const sr = 150 * s, sun0 = [pk[0][0] + 330 * s, pk[0][1] + (60 + P.sunY) * s], sun = P.sunY ? sun0 : sunSpot(sc, sun0, sr, pk[0]);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
+    const k = (y * W + x) * 4, o = owner[y * W + x];
+    let body = 0;
+    if (o >= 0){ const hh = sc.sampleRow(t.h, o, x), dd = V0 + o * t.dv - ZCAM, u = (x / s - sc.cx) * dd / sc.fx;
+      body = clamp01((hh - 0.25) / 0.6) * xf((x / s - sc.fadeX - 50) / 350) * clamp01((46 - Math.abs(u)) / 10) * clamp01((dd + ZCAM - V0) / NF); }
+    if (P.sun){ const ds = Math.hypot(x - sun[0], y - sun[1]);
+      let sm = clamp01((sr - ds) / 1.5) * (1 - body);
+      if (ds > 30 * s && ((ds / s) % 22) < 3.2) sm *= 0.15;
+      if (sm > 0) for (let ch = 0; ch < 3; ch++) d[k + ch] = d[k + ch] * (1 - sm * 0.92) + 255 * red[ch] * sm * 0.92; }
+    if (body > 0){ const tx = 0.92 + 0.12 * R_(); for (let ch = 0; ch < 3; ch++) d[k + ch] = d[k + ch] * (1 - body) + 255 * ink[ch] * tx * body; }
+  }
+  ctx.putImageData(img, 0, 0);
+  const { h, sh, sn } = lineCommon(sc);
+  const pc = paper.map(c => Math.min(1, c * 1.02));
+  ridgelines(ctx, sc, P.spacing, (i, px, u, v, dep) => {
+    const hh = sc.sampleRow(h, i, px), l = sc.sampleRow(sh, i, px), w = sc.sampleRow(sn, i, px);
+    const a = clamp01((hh - 0.3) / 0.5) * xf((px / s - sc.fadeX - 80) / 300) * clamp01((46 - Math.abs(u)) / 12);
+    const wd = (0.15 + 3.2 * Math.pow(clamp01((l - 0.45) / 0.5), 1.6) + 4 * w) * (1.15 - 0.45 * dep) * 0.8;
+    return [a, wd];
+  }, pc);
+  // wind strokes
+  ctx.save(); ctx.strokeStyle = rgba(ink, 0.8); ctx.lineCap = "round";
+  [[1290, 120, 300], [1700, 260, 210], [2040, 95, 250], [2720, 120, 220]].forEach(([x0, y0, L], k) => {
+    // skip a stroke that would cross the terrain (horns and canyons fill more of the sky)
+    for (let q = 0; q <= 20; q++){ const X = (x0 + L * q / 20 + P.panX) * s, Y = (y0 + 5 + P.panY) * s;
+      if (X >= 0 && X < W && (y0 + 20 + P.panY) * s > sc.sil(X) - 20 * s) return;
+      if (P.sun && Math.hypot(X - sun[0], Y - sun[1]) < sr + 25 * s) return; }
+    [[0, 1.6], [9, 0.9]].forEach(([off, lw]) => { ctx.lineWidth = lw * 2.8 * s; ctx.beginPath();
+      for (let q = 0; q <= 80; q++){ const tt = q / 80, X = (x0 + off * 2 + L * tt * (1 - off / 40) + P.panX) * s, Y = (y0 + off + 5 * Math.sin(tt * 5 + k) + P.panY) * s;
+        q ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); } ctx.stroke(); }); });
+  ctx.restore();
+  if (P.labels){ ctx.save(); ctx.fillStyle = rgba(red, 1); ctx.textAlign = "right"; ctx.font = `${34 * s}px ${CFG.labelFont}`;
+    ctx.fillText(CFG.native, W - 70 * s, H - 60 * s); ctx.restore(); }
+}
+
+const RENDER = { survey: renderSurvey, topo: renderTopo, nocturne: renderNocturne, stipple: renderStipple, riso: renderRiso, woodcut: renderWoodcut };
+
+/* ---------------- render driver ---------------- */
+function render(canvas, W, H, quality){
+  const k = quality === "draft" ? 2 : 3;
+  const NZ = Math.max(80, Math.round((V1 - V0) / (P.spacing / k)) + 1);
+  const NX = quality === "draft" ? 420 : 640;
+  const t = buildTerrain(P.yaw, NX, Math.min(NZ, 900));
+  lighting(t, P.lightAz, P.lightEl, P.snow);
+  const sc = makeScene(t, W, H);
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+  RENDER[P.style](ctx, sc);
+  return sc;
+}
+
+/* ---------------- UI ---------------- */
+const $ = id => document.getElementById(id);
+const art = $("art"), statusEl = $("status");
+const RANGES = ["yaw","camh","zoom","relief","panX","panY","lightAz","lightEl","snow","sunY","spacing","weight"];
+const FMT = { yaw:v=>`${v}°`, camh:v=>`${(+v).toFixed(1)} km`, zoom:v=>`${(+v).toFixed(2)}×`, relief:v=>`${(+v).toFixed(2)}×`, panX:v=>v, panY:v=>v,
+  lightAz:v=>`${v}°`, lightEl:v=>`${v}°`, snow:v=>`${v} m`, sunY:v=>v, spacing:v=>`${Math.round(v*CFG.k*1000)} m`, weight:v=>`${(+v).toFixed(2)}×` };
+function syncUI(){
+  for (const k of RANGES){ $(k).value = P[k]; $(k).nextElementSibling.textContent = FMT[k](P[k]); }
+  for (const k of ["paper","ink","accent"]) $(k).value = P[k];
+  for (const k of ["sun","network","labels","guide"]) $(k).checked = !!P[k];
+  document.querySelectorAll(".tile").forEach(b => b.setAttribute("aria-pressed", b.dataset.style === P.style));
+}
+function displaySize(){ const w = Math.min(3000, Math.round(art.clientWidth * Math.min(2, devicePixelRatio || 1))); return [w, Math.round(w / 3)]; }
+let pending = null, idle = null, busy = false, lastMs = 0;
+function drawGuide(){
+  if (!P.guide) return;
+  const ctx = art.getContext("2d"), W = art.width, s = W / 3000;
+  ctx.save(); ctx.setLineDash([10 * s, 8 * s]); ctx.strokeStyle = "rgba(220,60,40,.9)"; ctx.lineWidth = 3 * s;
+  ctx.beginPath(); ctx.arc(0.107 * W, art.height, 0.094 * W, 0, 7); ctx.stroke();
+  ctx.fillStyle = "rgba(220,60,40,.9)"; ctx.font = `${26 * s}px "JetBrains Mono", monospace`; ctx.fillText("profile photo (approx.)", 0.03 * W, art.height - 0.2 * W * 0.5 - 40 * s);
+  ctx.restore();
+}
+function schedule(quality = "full"){
+  if (pending === "full" && quality === "draft") return; pending = pending === "full" ? "full" : quality;
+  requestAnimationFrame(() => {
+    if (!pending) return; const q = pending; pending = null;
+    const [W, H] = displaySize(); const t0 = performance.now();
+    render(art, q === "draft" ? Math.round(W * 0.6) : W, q === "draft" ? Math.round(H * 0.6) : H, q);
+    drawGuide();
+    lastMs = performance.now() - t0;
+    statusEl.textContent = `${PRESETS[P.style].name} · ${art.width}×${art.height} · rendered in ${Math.round(lastMs)} ms`;
+  });
+  if (quality === "draft"){ clearTimeout(idle); idle = setTimeout(() => schedule("full"), 260); }
+}
+function setStyle(st){
+  const keep = { yaw: P.yaw, seed: P.seed, guide: P.guide };
+  P = { style: st, ...structuredClone(PRESETS[st]), ...keep };
+  syncUI(); schedule("full");
+}
+function buildTiles(){
+  const box = $("styles");
+  ORDER.forEach(st => {
+    const b = document.createElement("button"); b.className = "tile"; b.type = "button"; b.dataset.style = st;
+    b.setAttribute("aria-pressed", "false"); b.setAttribute("aria-label", `${PRESETS[st].name} style`);
+    b.innerHTML = `<canvas width="480" height="160" aria-hidden="true"></canvas><span>${PRESETS[st].name}</span>`;
+    b.addEventListener("click", () => setStyle(st)); box.appendChild(b);
+  });
+}
+async function renderTiles(){
+  const saved = P;
+  for (const b of document.querySelectorAll(".tile")){
+    await new Promise(r => setTimeout(r, 0));
+    const st = b.dataset.style; P = { style: st, seed: saved.seed, guide: false, ...structuredClone(PRESETS[st]) };
+    const c = b.querySelector("canvas"); const tmp = document.createElement("canvas");
+    render(tmp, 900, 300, "draft"); c.getContext("2d").drawImage(tmp, 0, 0, 480, 160);
+  }
+  P = saved;
+}
+for (const k of RANGES) $(k).addEventListener("input", e => { P[k] = +e.target.value; e.target.nextElementSibling.textContent = FMT[k](P[k]); schedule("draft"); });
+for (const k of ["paper","ink","accent"]) $(k).addEventListener("input", e => { P[k] = e.target.value; schedule("draft"); });
+for (const k of ["sun","network","labels","guide"]) $(k).addEventListener("change", e => { P[k] = e.target.checked; schedule("full"); });
+$("seedBtn").addEventListener("click", () => { P.seed = (Math.random() * 1e6) | 0; schedule("full"); });
+$("resetBtn").addEventListener("click", () => setStyle(P.style));
+let orbiting = false, orbitT = 0, orbitBase = 0;
+$("orbitBtn").addEventListener("click", () => {
+  orbiting = !orbiting; $("orbitBtn").setAttribute("aria-pressed", orbiting); $("orbitBtn").textContent = orbiting ? "■ Stop" : "▶ Orbit";
+  if (orbiting){ orbitBase = P.yaw; orbitT = 0; const loop = () => { if (!orbiting) { schedule("full"); return; }
+      orbitT += 1; P.yaw = Math.round((orbitBase + 28 * Math.sin(orbitT / 40)) * 10) / 10; $("yaw").value = P.yaw; $("yaw").nextElementSibling.textContent = FMT.yaw(Math.round(P.yaw));
+      const [W, H] = displaySize(); render(art, Math.round(W * 0.5), Math.round(H * 0.5), "draft"); drawGuide();
+      statusEl.textContent = `Orbiting · ${Math.round(1000 / Math.max(16, performance.now() - (loop.t || 0)))} fps`; loop.t = performance.now();
+      requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
+});
+function dialog(html){ $("dlgBody").innerHTML = ""; $("dlgBody").append(html); $("dlg").showModal(); }
+$("dlgClose").addEventListener("click", () => $("dlg").close());
+$("jsonBtn").addEventListener("click", async () => {
+  const txt = JSON.stringify(P, null, 2);
+  try { await navigator.clipboard.writeText(txt); statusEl.textContent = "Settings copied to clipboard"; }
+  catch { const ta = document.createElement("textarea"); ta.value = txt; ta.readOnly = true; ta.setAttribute("aria-label", "Settings JSON"); dialog(ta); ta.select(); }
+});
+let downloads = null;
+if (window.claude && window.claude.use) window.claude.use("downloads").then(d => { downloads = d; }).catch(() => {});
+$("saveBtn").addEventListener("click", async () => {
+  statusEl.textContent = "Rendering 3000×1000…"; await new Promise(r => setTimeout(r, 30));
+  const c = document.createElement("canvas"); const t0 = performance.now(); render(c, 3000, 1000, "full");
+  statusEl.textContent = `Rendered 3000×1000 in ${Math.round(performance.now() - t0)} ms`;
+  const blob = await new Promise(r => c.toBlob(r, "image/png"));
+  const name = `${CFG.slug}-${P.style}-${P.seed}.png`;
+  if (downloads){
+    try { await downloads.save({ filename: name, data: blob }); statusEl.textContent = `Saved ${name}`; return; }
+    catch (e) { if (e && e.code === "declined") { statusEl.textContent = "Save cancelled"; return; } }
+  }
+  if (!window.claude){                           // a plain web page (not a claude.ai artifact): a normal download works
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    statusEl.textContent = `Saved ${name}`; return;
+  }
+  const img = document.createElement("img"); img.src = URL.createObjectURL(blob); img.alt = "Rendered 3000 by 1000 header";
+  const wrap = document.createElement("div"); const p = document.createElement("p"); p.className = "fine"; p.style.margin = "0 0 10px";
+  p.textContent = "Right-click or long-press the image to save it."; wrap.append(p, img); dialog(wrap);
+});
+const themeBtn = $("themeBtn");
+themeBtn.addEventListener("click", () => {
+  const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = cur === "dark" ? "light" : "dark";
+});
+let rsz; addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => schedule("full"), 200); });
+
+(async function init(){
+  decodeDEM(); const sn = $("snow"); sn.min = Math.round((CFG.base_km + 0.3 * (CFG.peak_km - CFG.base_km)) * 1000 / 10) * 10;
+  sn.max = Math.max(Math.round(CFG.peak_km * 1000 + 100), AUTO.snowline ?? 0);
+  for (const st of ORDER) PRESETS[st].panY = autoPanY(st);
+  P = { ...P, panY: PRESETS[P.style].panY };
+  buildTiles(); syncUI();
+  try { await Promise.race([Promise.all([
+    document.fonts.load(`36px ${CFG.labelFont}`, CFG.native + CFG.peaks.map(p => p.name).join("")), document.fonts.load(`500 36px ${CFG.titleFont}`, CFG.native),
+    document.fonts.load('italic 20px "Cormorant Garamond"'), document.fonts.load('20px "JetBrains Mono"')]), new Promise(r => setTimeout(r, 2500))]); } catch {}
+  schedule("full");
+  setTimeout(renderTiles, 400);
+})();
+</script>
+</body>
+</html>

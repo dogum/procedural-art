@@ -1,0 +1,98 @@
+{
+  "skill_name": "procedural-terrain-art",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "can you make me a twitter header of mount rainier the way it looks from seattle? something like those engraved line drawings, cream paper, maybe a sun. I'm going to put my profile pic bottom left",
+      "expected_output": "A 3000x1000 survey-style render of Rainier from a Seattle viewpoint, peak on the right, left third clear, delivered as PNG plus a JPG under 5 MB.",
+      "files": [],
+      "expectations": [
+        "Looked up Rainier's summit and a Seattle viewpoint instead of guessing coordinates",
+        "Ran scripts/render.py with --style survey and --size 3000x1000 (default align right)",
+        "Checked the printed peak elevation against the real ~4392 m",
+        "Viewed a downscaled preview before delivering",
+        "Delivered a JPG under 5 MB alongside or instead of an oversized PNG"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I want a LinkedIn banner of the Grand Tetons as a black woodcut print. Big 'TETONS' title would be cool.",
+      "expected_output": "A 1584x396 (or 3168x792) woodcut of the Teton Range with a title.",
+      "files": [],
+      "expectations": [
+        "Used --style woodcut with a LinkedIn banner size (1584x396 or 3168x792)",
+        "Passed a --title",
+        "Picked a real viewpoint east of the range (e.g. Snake River Overlook or Jenny Lake area)",
+        "The range, not a single peak, fills the frame"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Desktop wallpaper please, 4K, Kilimanjaro at night with stars and a moon. centered composition",
+      "expected_output": "A 3840x2160 nocturne render of Kilimanjaro, centred.",
+      "files": [],
+      "expectations": [
+        "Used --style nocturne --size 3840x2160 --align center",
+        "Looked up Kibo summit coordinates and a viewpoint (e.g. Amboseli)",
+        "Moon sits in open sky, not buried behind terrain"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Make a short looping video orbiting the Matterhorn, moonlit line style. I want to post it on Instagram.",
+      "expected_output": "An MP4 orbit video (nocturne) of the Matterhorn, loopable.",
+      "files": [],
+      "expectations": [
+        "Used scripts/animate.py with --style nocturne",
+        "Used a classic Matterhorn viewpoint such as Riffelsee or Zermatt",
+        "Rendered in foreground chunks if the shell has a time limit (--start/--end)",
+        "Delivered an MP4 encoded with ffmpeg"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Can you build me one of those interactive pages where I can play with Mount Hood from Portland in different styles and download a header?",
+      "expected_output": "A self-contained HTML studio for Mount Hood built with build_studio.py.",
+      "files": [],
+      "expectations": [
+        "Ran scripts/build_studio.py with --peak, --from, --from-name and --name",
+        "Output is a single HTML file under about 1 MB with the DEM embedded",
+        "If published as an artifact, declared the downloads capability",
+        "Checked the page headless (Playwright) or explained how it was verified"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "topographic contour art of the grand canyon from the south rim, I'd like to print it 6000 px wide",
+      "expected_output": "A canyon render in topo (or a better-suited style with an explanation) at ~6000x2000.",
+      "files": [],
+      "expectations": [
+        "Targeted a butte or temple inside the canyon and a South Rim viewpoint (e.g. Mather Point)",
+        "Rendered at --size 6000x2000",
+        "Mentioned honestly if topo reads busy for canyons and offered survey, nocturne or riso"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Show me Denali in every style you have so I can pick one",
+      "expected_output": "Six Denali renders plus a contact sheet.",
+      "files": [],
+      "expectations": [
+        "Ran render.py --style all",
+        "Produced a contact sheet",
+        "Presented the sheet and offered a full-size final of the chosen style"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Everest from Kala Patthar, survey style, label it सगरमाथा with the height",
+      "expected_output": "An Everest survey render with a Devanagari label that renders correctly (or a clear font fix).",
+      "files": [],
+      "expectations": [
+        "Used a Kala Patthar viewpoint and Everest summit coordinates",
+        "Checked the preview for missing-glyph boxes in the Devanagari label",
+        "If glyphs were missing, installed or pointed to a Noto Devanagari font, or told the user plainly"
+      ]
+    }
+  ]
+}

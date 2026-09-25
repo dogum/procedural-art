@@ -1,0 +1,49 @@
+name: Release
+
+# Two ways to release:
+#   1. Push a tag vX.Y.Z (must match plugin.json version).
+#   2. Run this workflow manually; it reads the version from plugin.json and tags the commit.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve version and tag
+        id: v
+        run: |
+          v=$(python3 -c 'import json;print(json.load(open(".claude-plugin/plugin.json"))["version"])')
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != plugin.json v$v"; exit 1; }
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+
+      - name: Build the Claude.ai skill packages
+        run: scripts/build-skills.sh dist
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          awk -v v="${{ steps.v.outputs.version }}" '/^## /{p = index($0, "[" v "]") > 0; next} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+          printf '\n---\n' >> notes.md
+          cat .github/release-footer.md >> notes.md
+          cat notes.md
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.v.outputs.tag }}
+          body_path: notes.md
+          files: |
+            dist/procedural-terrain-art.skill
+            dist/procedural-realism.skill

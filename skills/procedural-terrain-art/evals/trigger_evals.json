@@ -1,0 +1,22 @@
+[
+  {"query": "make me a banner for my youtube channel with Mt Shasta drawn in those thin ridge lines like the unknown pleasures cover", "should_trigger": true},
+  {"query": "I found this AI generated mountain header on twitter and want to recreate it with code instead so it's actually mine. it's Ararat I think", "should_trigger": true},
+  {"query": "risograph style print of Mount Fuji, pink and blue, with the japanese name big", "should_trigger": true},
+  {"query": "can u do a topo contour poster of the matterhorn for my living room, 60x20 cm", "should_trigger": true},
+  {"query": "I'd like a woodcut-looking image of the mountains around Banff for a coffee bag label", "should_trigger": true},
+  {"query": "stipple / pointillism art of Mauna Kea please, white background", "should_trigger": true},
+  {"query": "generate a 6 second looping orbit video of Kilimanjaro at night, line art", "should_trigger": true},
+  {"query": "build an interactive page where I can rotate Mount St Helens and export a LinkedIn banner", "should_trigger": true},
+  {"query": "linkedin cover image of the swiss alps from grindelwald, minimal and engraved", "should_trigger": true},
+  {"query": "desktop wallpaper of Denali in a vintage survey-map style", "should_trigger": true},
+  {"query": "photorealistic render of Mount Rainier at sunset with haze and a lenticular cloud, no AI image generation", "should_trigger": false},
+  {"query": "turn my photo of the Dolomites into a watercolor painting", "should_trigger": false},
+  {"query": "plot the elevation profile of my strava GPX from yesterday's hike as a line chart", "should_trigger": false},
+  {"query": "write a Midjourney prompt for a moody mountain landscape header", "should_trigger": false},
+  {"query": "how do I make hillshade and contours from a DEM in QGIS for my thesis map", "should_trigger": false},
+  {"query": "design a simple flat SVG mountain logo for my hiking club, three triangles and a sun", "should_trigger": false},
+  {"query": "compute the viewshed from this ridge to check where the new radio tower is visible", "should_trigger": false},
+  {"query": "draw the Joy Division Unknown Pleasures album cover exactly", "should_trigger": false},
+  {"query": "what is the elevation of Mount Elbrus and which side is easier to climb", "should_trigger": false},
+  {"query": "make a 3D printable STL of Half Dome from elevation data", "should_trigger": false}
+]

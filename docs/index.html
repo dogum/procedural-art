@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Real mountains, glass and paintings made with code and real elevation data. No image model. Two open-source Claude skills.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="procedural-art: real mountains from elevation data, no image model">
+<meta property="og:description" content="Real elevation data, a physical sky and a path tracer. No image model. Two open-source Claude skills.">
+<meta property="og:image" content="https://dogum.github.io/procedural-art/media/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Mount Fuji reflected in a lake, rendered from elevation data, under the title Mountains Made of Math">
+<meta property="og:url" content="https://dogum.github.io/procedural-art/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://dogum.github.io/procedural-art/media/og.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26 L12 10 L17 17 L21 12 L30 26 Z' fill='%23d8935c'/%3E%3C/svg%3E">
+<title>procedural-art · Ararat and other mountains, made with code</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#ecebe5; --sheet:#f5f4ef; --ink:#1c222a; --muted:#5d656e; --rule:#cfcec6;
+  --contour:#9a5a2b; --water:#2b5d87; --shadow:rgba(28,34,42,.18);
+  --display:"Big Shoulders Display","Arial Narrow","Roboto Condensed",Impact,sans-serif;
+  --serif:"Source Serif 4","Iowan Old Style",Georgia,serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#121417; --sheet:#1a1d21; --ink:#e8e6df; --muted:#9aa1a8; --rule:#2d3136;
+    --contour:#d8935c; --water:#86b5dd; --shadow:rgba(0,0,0,.5); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#121417; --sheet:#1a1d21; --ink:#e8e6df; --muted:#9aa1a8; --rule:#2d3136;
+  --contour:#d8935c; --water:#86b5dd; --shadow:rgba(0,0,0,.5); color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+[hidden]{display:none!important}
+body{background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:1.08rem;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1380px;margin:0 auto;padding-inline:clamp(16px,3.2vw,48px)}
+a{color:var(--water);text-underline-offset:3px}
+img,video{display:block;max-width:100%;height:auto}
+button{font:inherit}
+:focus-visible{outline:2px solid var(--contour);outline-offset:3px}
+
+/* ---------- hero ---------- */
+.hero{padding-block:clamp(16px,3vw,36px) 0}
+.hero-top{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:.74rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--rule);padding-bottom:10px}
+.hero-top b{color:var(--ink);font-weight:500}
+.stage{position:relative;margin-top:18px;background:#0e1422;border-radius:3px;overflow:hidden;box-shadow:0 40px 70px -50px var(--shadow)}
+.stage video{width:100%;aspect-ratio:3/1;object-fit:cover}
+h1{font-family:var(--display);font-weight:900;text-transform:uppercase;letter-spacing:.005em;line-height:.84;font-size:clamp(3.2rem,11.5vw,10.5rem);margin:.18em 0 0;text-wrap:balance}
+h1 .thin{font-weight:600;color:var(--contour)}
+.thesis{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:clamp(18px,4vw,64px);margin-top:22px;align-items:start}
+.thesis p{margin:0;max-width:60ch;font-size:clamp(1.12rem,1.7vw,1.32rem);line-height:1.5}
+.ledger{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;border-top:2px solid var(--ink)}
+.ledger div{padding:10px 0 12px;border-bottom:1px solid var(--rule)}
+.ledger div:nth-child(odd){padding-right:14px}
+.ledger dt{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ledger dd{margin:2px 0 0;font-family:var(--display);font-weight:800;font-size:2.1rem;line-height:1;font-variant-numeric:tabular-nums}
+
+/* ---------- plates ---------- */
+.plate{display:grid;grid-template-columns:230px minmax(0,1fr);gap:clamp(18px,3vw,44px);padding-block:clamp(48px,7vw,96px) 0}
+.margin{position:relative}
+.margin .pno{font-family:var(--display);font-weight:800;font-size:1rem;letter-spacing:.14em;text-transform:uppercase;color:var(--contour);border-top:2px solid var(--contour);padding-top:8px;display:block}
+.margin h2{font-family:var(--display);font-weight:800;text-transform:uppercase;font-size:clamp(2rem,3.4vw,3rem);line-height:.9;margin:.25em 0 .35em;text-wrap:balance}
+.margin p{margin:0 0 .8em;font-size:1rem;color:var(--ink)}
+.data{font-family:var(--mono);font-size:.74rem;line-height:1.6;color:var(--muted);border-top:1px solid var(--rule);padding-top:10px;margin-top:14px;font-variant-numeric:tabular-nums}
+.data b{color:var(--ink);font-weight:500}
+.main{min-width:0}
+figure{margin:0}
+.frame{position:relative;background:var(--sheet);border-radius:2px;overflow:hidden;box-shadow:0 30px 60px -44px var(--shadow)}
+.frame img{width:100%;aspect-ratio:3/1;object-fit:cover}
+figcaption{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:.72rem;color:var(--muted);padding-top:8px}
+figcaption code{font-family:var(--mono);color:var(--ink)}
+.save{all:unset;cursor:pointer;font-family:var(--mono);font-size:.72rem;color:var(--water);text-decoration:underline;text-underline-offset:3px}
+.save[hidden]{display:none!important}
+
+/* tab strips */
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.tab{all:unset;cursor:pointer;font-family:var(--mono);font-size:.76rem;letter-spacing:.03em;padding:7px 11px;border:1px solid var(--rule);border-radius:2px;color:var(--muted);background:transparent;transition:border-color .15s,color .15s}
+.tab:hover{border-color:var(--ink);color:var(--ink)}
+.tab[aria-selected="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.tab:focus-visible{outline:2px solid var(--contour);outline-offset:2px}
+
+/* landform index */
+.index{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin-top:14px}
+.lf{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-width:0}
+.lf img{width:100%;aspect-ratio:3/1;object-fit:cover;border:1px solid var(--rule);border-radius:2px;transition:transform .2s}
+.lf span{font-family:var(--mono);font-size:.68rem;color:var(--muted);line-height:1.35}
+.lf span b{display:block;color:var(--ink);font-weight:500;font-size:.72rem}
+.lf[aria-selected="true"] img{outline:2px solid var(--contour);outline-offset:2px}
+.lf:hover img{transform:translateY(-2px)}
+.lf:focus-visible img{outline:2px solid var(--contour);outline-offset:2px}
+
+/* compare slider */
+.compare{position:relative;aspect-ratio:3/1;overflow:hidden;border-radius:2px;background:var(--sheet);box-shadow:0 30px 60px -44px var(--shadow);touch-action:pan-y}
+.compare img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.compare .over{clip-path:inset(0 calc(100% - var(--pos,50%)) 0 0)}
+.compare .bar{position:absolute;top:0;bottom:0;left:var(--pos,50%);width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);pointer-events:none}
+.compare .bar::after{content:"";position:absolute;top:50%;left:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.compare input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;margin:0}
+.compare .lab{position:absolute;bottom:10px;font-family:var(--mono);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;background:rgba(20,24,30,.72);color:#f1efe8;padding:4px 8px;border-radius:2px;pointer-events:none}
+.compare .lab.l{left:10px}.compare .lab.r{right:10px}
+
+/* grids */
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(14px,2vw,24px);margin-top:clamp(14px,2vw,24px)}
+.stack{display:grid;gap:clamp(18px,2.4vw,30px)}
+.video{aspect-ratio:3/1;width:100%;background:#000;border-radius:2px}
+
+/* how it works */
+.how{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(18px,3vw,40px)}
+.how svg{width:100%;height:auto;display:block}
+.how h3{font-family:var(--display);font-weight:800;text-transform:uppercase;font-size:1.5rem;margin:0 0 8px;letter-spacing:.02em}
+.how p{margin:.6em 0 0;font-size:.98rem;color:var(--muted);max-width:62ch}
+.svg-ink{fill:none;stroke:var(--ink)}
+.svg-fill{fill:var(--sheet);stroke:var(--rule)}
+.svg-t{fill:var(--ink);font-family:var(--mono);font-size:11px}
+.svg-m{fill:var(--muted);font-family:var(--mono);font-size:9.5px}
+.svg-a{stroke:var(--contour);fill:none}
+.svg-af{fill:var(--contour)}
+
+/* skills */
+.skills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(14px,2vw,24px)}
+.skill{background:var(--sheet);border:1px solid var(--rule);border-radius:3px;padding:20px 22px 22px;display:flex;flex-direction:column;gap:10px}
+.skill h3{font-family:var(--mono);font-weight:500;font-size:1rem;margin:0}
+.skill p{margin:0;font-size:1rem}
+.skill ul{margin:0;padding-left:1.1em;font-size:.95rem;color:var(--muted)}
+.skill .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:auto;padding-top:8px}
+.btn{all:unset;cursor:pointer;font-family:var(--mono);font-size:.8rem;padding:10px 14px;border-radius:2px;background:var(--ink);color:var(--paper)}
+.btn:hover{background:var(--contour)}
+.btn:focus-visible{outline:2px solid var(--contour);outline-offset:2px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--ink)}
+.note{font-family:var(--mono);font-size:.72rem;color:var(--muted)}
+ol.steps{margin:0;padding-left:1.2em;max-width:70ch}
+ol.steps li{margin-bottom:.35em}
+.topnav{display:flex;gap:16px}
+.topnav a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--rule)}
+.topnav a:hover{border-color:var(--contour)}
+.studios{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+@media (max-width:1100px){.studios{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:640px){.studios{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.studio{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--muted);font-family:var(--mono);font-size:.72rem}
+.studio img{width:100%;aspect-ratio:3/1;object-fit:cover;border:1px solid var(--rule);border-radius:2px;transition:transform .2s}
+.studio:hover img{transform:translateY(-2px);border-color:var(--contour)}
+.studio b{display:block;color:var(--ink);font-weight:500;font-size:.8rem}
+.install{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr);gap:clamp(14px,2vw,24px)}
+.install h3{font-family:var(--display);font-weight:800;text-transform:uppercase;font-size:1.25rem;margin:0 0 8px;letter-spacing:.02em}
+.install pre{margin:0;background:var(--sheet);border:1px solid var(--rule);border-radius:2px;padding:12px;overflow-x:auto;font-family:var(--mono);font-size:.72rem;line-height:1.6}
+.btn{text-decoration:none}
+@media (max-width:900px){.install{grid-template-columns:1fr}}
+footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:.72rem;color:var(--muted);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+@media (max-width:980px){
+  .plate{grid-template-columns:1fr}
+  .index{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .thesis{grid-template-columns:1fr}
+}
+@media (max-width:640px){
+  .index{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pair,.how,.skills{grid-template-columns:1fr}
+  .ledger dd{font-size:1.7rem}
+}
+@media (prefers-reduced-motion: reduce){ .lf img,.tab{transition:none} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="hero-top"><span><b>procedural-art</b> · two Claude skills · no image model</span><nav class="topnav" aria-label="Site"><a href="#studios">Studios</a><a href="#install">Install</a><a href="https://github.com/dogum/procedural-art">GitHub</a></nav></div>
+    <div class="stage">
+      <video id="heroVid" src="media/orbit.mp4" poster="media/orbit_poster.jpg" autoplay muted loop playsinline aria-label="Ararat in the moonlit line style, orbiting slowly"></video>
+    </div>
+    <h1>Ararat <span class="thin">&amp; other</span> mountains</h1>
+    <div class="thesis">
+      <p>Every picture here was computed. Real elevation data, a perspective camera and a few thousand lines of Python produce the line engravings; a ray marcher with a physical sky produces the photographs; a path tracer written from scratch produces the glass. No generative image model touched any pixel. Two Claude skills package all of it, so you can point them at any mountain on Earth.</p>
+      <dl class="ledger">
+        <div><dt>Print styles</dt><dd>6</dd></div>
+        <div><dt>Landforms tested</dt><dd>7</dd></div>
+        <div><dt>Lines of Python + JS</dt><dd>~6,500</dd></div>
+        <div><dt>Image models used</dt><dd>0</dd></div>
+      </dl>
+    </div>
+  </header>
+
+  <main>
+    <!-- Plate I -->
+    <section class="plate" aria-labelledby="p1">
+      <div class="margin">
+        <span class="pno">Plate I</span>
+        <h2 id="p1">One mountain, six prints</h2>
+        <p>Masis and Sis, as seen from Yerevan. The same elevation grid and the same hidden-line buffer feed every style; only the drawing changes.</p>
+        <div class="data"><b>39.7019° N 44.2986° E</b><br>Masis 5137 m · Sis 3896 m<br>view from Yerevan, 58 km<br>3000 × 1000 · 5–15 s per style</div>
+      </div>
+      <div class="main">
+        <figure>
+          <div class="frame"><img id="styleImg" src="media/st_survey.jpg" alt="Ararat in the survey style: engraved ridgelines on parchment with an orange sun in the saddle" width="1800" height="600"></div>
+          <figcaption><span id="styleCap"><code>render.py --style survey</code> · engraved ridgelines, sun in the saddle</span><a class="save" data-save="styleImg" href="#" download>Save image</a></figcaption>
+        </figure>
+        <div class="tabs" role="tablist" aria-label="Print style" id="styleTabs"></div>
+      </div>
+    </section>
+
+    <!-- Plate II -->
+    <section class="plate" aria-labelledby="p2">
+      <div class="margin">
+        <span class="pno">Plate II</span>
+        <h2 id="p2">Any landform</h2>
+        <p>Before drawing, the engine measures the ground around the summit: how steep the peak is for its footprint, what stands in front of it, how rough it is, whether the target sits below a plateau. Cones keep the original framing; horns, ranges and canyons get their own.</p>
+        <div class="data" id="lfData"></div>
+      </div>
+      <div class="main">
+        <figure>
+          <div class="frame"><img id="lfImg" src="media/lf_fuji.jpg" alt="" width="1800" height="600"></div>
+          <figcaption><span id="lfCap"></span><a class="save" data-save="lfImg" href="#" download>Save image</a></figcaption>
+        </figure>
+        <div class="index" role="tablist" aria-label="Landform" id="lfIndex"></div>
+      </div>
+    </section>
+
+    <!-- Plate II b: Matterhorn fix -->
+    <section class="plate" aria-labelledby="p2b">
+      <div class="margin">
+        <span class="pno">Plate II · detail</span>
+        <h2 id="p2b">The Matterhorn fix</h2>
+        <p>The first engine treated every mountain like Ararat, so the Matterhorn drowned in its own massif. Drag across the plate to compare.</p>
+        <div class="data">base <b>1429 → 2441 m</b><br>scene half-width <b>30.7 → 10.8 km</b><br>camera 3.4 → 2.0 · relief ×1.1<br>Fuji, Ararat, Mauna Kea: 0/255 pixel change</div>
+      </div>
+      <div class="main">
+        <div class="compare" id="mhCompare" style="--pos:50%">
+          <img src="media/mh_after.jpg" alt="Matterhorn with landform-aware framing: the horn fills the frame, sun in open sky" width="1800" height="600">
+          <img class="over" src="media/mh_before.jpg" alt="Matterhorn with the old cone framing: jagged ridges and a buried sun" width="1800" height="600">
+          <div class="bar"></div>
+          <span class="lab l">Cone rules</span><span class="lab r">Landform-aware</span>
+          <input type="range" min="0" max="100" value="50" id="mhRange" aria-label="Compare old and new Matterhorn framing">
+        </div>
+      </div>
+    </section>
+
+    <!-- Plate III -->
+    <section class="plate" aria-labelledby="p3">
+      <div class="margin">
+        <span class="pno">Plate III</span>
+        <h2 id="p3">Toward a photograph</h2>
+        <p>The same elevation, ray-marched through a physical atmosphere: Rayleigh and Mie scattering, soft terrain shadows, valley mist, a lenticular cloud with multiple scattering. Lakes reflect the terrain with Fresnel and ripple normals; trees, villages and city lights are instanced near the camera.</p>
+        <div class="data">sky: 28 samples / ray<br>shadows: 70-step march to the sun<br>3000 × 1000: 3–12 min on one core<br>resumable in row bands</div>
+      </div>
+      <div class="main stack">
+        <figure>
+          <div class="frame"><img id="reFuji" src="media/re_fuji.jpg" alt="Photographic render of Mount Fuji reflected in Lake Kawaguchi with a lenticular cloud and shoreline forest" width="1800" height="600" loading="lazy"></div>
+          <figcaption><span>Fuji across Lake Kawaguchi · <code>--water-level auto --waves 0.12 --trees 0.8</code> · camera 4 m above the water</span><a class="save" data-save="reFuji" href="#" download>Save image</a></figcaption>
+        </figure>
+        <figure>
+          <div class="frame"><img id="reArarat" src="media/re_ararat.jpg" alt="Photographic render of Ararat at golden hour with haze and a lenticular cloud" width="1800" height="600" loading="lazy"></div>
+          <figcaption><span>Ararat from the plain · golden hour, sun placed to light the faces the camera sees</span><a class="save" data-save="reArarat" href="#" download>Save image</a></figcaption>
+        </figure>
+        <div class="pair">
+          <figure>
+            <div class="frame"><img id="reOrch" src="media/re_orchards.jpg" alt="Ararat behind orchards, poplar rows and villages" width="1800" height="600" loading="lazy"></div>
+            <figcaption><span>Orchards and villages · <code>--trees 0.8 --villages 0.7</code></span><a class="save" data-save="reOrch" href="#" download>Save</a></figcaption>
+          </figure>
+          <figure>
+            <div class="frame"><img id="reBlue" src="media/re_bluehour.jpg" alt="Ararat at blue hour over the lights of Yerevan with out-of-focus lamps" width="1800" height="600" loading="lazy"></div>
+            <figcaption><span>Yerevan at blue hour · <code>--city 0.8 --aperture 40</code></span><a class="save" data-save="reBlue" href="#" download>Save</a></figcaption>
+          </figure>
+        </div>
+        <figure>
+          <video class="video" src="media/timelapse.mp4" poster="media/timelapse_poster.jpg" controls muted loop playsinline preload="none" aria-label="Sunset timelapse of Ararat from Yerevan, golden light into night with city lights coming on"></video>
+          <figcaption><span>Sunset over Ararat · real sun path for 20 April, 18:40–20:40 · 40 rendered keyframes · <code>timelapse.py</code></span></figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Plate IV -->
+    <section class="plate" aria-labelledby="p4">
+      <div class="margin">
+        <span class="pno">Plate IV</span>
+        <h2 id="p4">Glass, from scratch</h2>
+        <p>A Monte Carlo path tracer in plain numpy. Scenes are small JSON files: spheres, boxes, prisms, cut gems, hollow glasses with liquid in them. Light is sampled two ways and weighted, so glass and copper clean up many times faster than the first version.</p>
+        <div class="data">glass to RMSE 0.04: <b>121 s → 18 s</b><br>copper: <b>126 s → 10 s</b><br>table caustic: 86 s → 35 s<br>spectral dispersion via Abbe number</div>
+      </div>
+      <div class="main stack">
+        <figure>
+          <div class="frame"><img id="slPrism" src="media/sl_prism.jpg" alt="Path-traced prism splitting a window's sunlight into a rainbow on linen, with a crystal ball and cut gems" width="1800" height="600" loading="lazy"></div>
+          <figcaption><span>Prism and crystal · <code>scenes/prism_and_crystal.json</code> · 60 samples / pixel</span><a class="save" data-save="slPrism" href="#" download>Save image</a></figcaption>
+        </figure>
+        <div class="pair">
+          <figure>
+            <div class="frame"><img id="slMarbles" src="media/sl_marbles.jpg" alt="Path-traced wine glass, water tumbler, crystal ball and coloured marbles casting coloured caustic shadows" width="1800" height="600" loading="lazy"></div>
+            <figcaption><span>Wine and marbles · 80 spp</span><a class="save" data-save="slMarbles" href="#" download>Save</a></figcaption>
+          </figure>
+          <figure>
+            <div class="frame"><img id="slPom" src="media/sl_pomegranate.jpg" alt="Path-traced crystal ball, glass of pomegranate juice, pomegranates and a copper sphere" width="1800" height="600" loading="lazy"></div>
+            <figcaption><span>Pomegranates · the first scene</span><a class="save" data-save="slPom" href="#" download>Save</a></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- Plate V -->
+    <section class="plate" aria-labelledby="p5">
+      <div class="margin">
+        <span class="pno">Plate V</span>
+        <h2 id="p5">Then paint it</h2>
+        <p>A stroke renderer turns any image into a painting. Big brushes block in, small ones follow the contours of the picture where it still differs; watercolour is built from transparent washes with wet edges and granulation instead.</p>
+        <div class="data">oil 3000 × 1000: ~45 s<br>watercolour: ~20 s<br>presets: oil, impasto, gouache, watercolour, ink<br>works on photos too</div>
+      </div>
+      <div class="main">
+        <div class="compare" id="paCompare" style="--pos:50%">
+          <img id="paUnder" src="media/pa_fuji_water.jpg" alt="The Fuji lake render painted as a watercolour" width="1800" height="600">
+          <img class="over" src="media/re_fuji.jpg" alt="The Fuji lake render" width="1800" height="600">
+          <div class="bar"></div>
+          <span class="lab l">Render</span><span class="lab r" id="paLab">Watercolour</span>
+          <input type="range" min="0" max="100" value="50" id="paRange" aria-label="Compare the render with the painting">
+        </div>
+        <div class="tabs" role="tablist" aria-label="Painting preset" id="paTabs"></div>
+        <div class="pair">
+          <figure>
+            <div class="frame"><img id="paInk" src="media/pa_ararat_ink.jpg" alt="Ararat painted in sumi-e ink wash" width="1800" height="600" loading="lazy"></div>
+            <figcaption><span>Ararat · <code>--style ink</code></span><a class="save" data-save="paInk" href="#" download>Save</a></figcaption>
+          </figure>
+          <figure>
+            <div class="frame"><img id="paImp" src="media/pa_still_impasto.jpg" alt="The pomegranate still life painted with thick impasto strokes" width="1800" height="600" loading="lazy"></div>
+            <figcaption><span>Still life · <code>--style impasto</code></span><a class="save" data-save="paImp" href="#" download>Save</a></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- Studios -->
+    <section class="plate" aria-labelledby="pst" id="studios">
+      <div class="margin">
+        <span class="pno">Try it</span>
+        <h2 id="pst">Studios in your browser</h2>
+        <p>Each studio is one HTML file with a 512 × 512 elevation grid inside it. Orbit the mountain, move the light, change the ink, and save a 3000 × 1000 PNG. No server, no install.</p>
+        <div class="data">about 0.76 MB each<br>Canvas 2D, no libraries<br>built by <b>build_studio.py</b></div>
+      </div>
+      <div class="main">
+        <div class="studios">
+          <a class="studio" href="studio/ararat.html"><img src="media/lf_ararat.jpg" alt="" width="1800" height="600" loading="lazy"><span><b>Ararat</b>from Yerevan · twin volcano</span></a>
+          <a class="studio" href="studio/fuji.html"><img src="media/lf_fuji.jpg" alt="" width="1800" height="600" loading="lazy"><span><b>Mount Fuji</b>from Lake Kawaguchi · cone</span></a>
+          <a class="studio" href="studio/matterhorn.html"><img src="media/lf_matterhorn.jpg" alt="" width="1800" height="600" loading="lazy"><span><b>Matterhorn</b>from Riffelsee · horn</span></a>
+          <a class="studio" href="studio/denali.html"><img src="media/lf_denali.jpg" alt="" width="1800" height="600" loading="lazy"><span><b>Denali</b>from Wonder Lake · massif</span></a>
+          <a class="studio" href="studio/grand-canyon.html"><img src="media/lf_canyon.jpg" alt="" width="1800" height="600" loading="lazy"><span><b>Grand Canyon</b>from Mather Point · canyon</span></a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Plate VI: how -->
+    <section class="plate" aria-labelledby="p6">
+      <div class="margin">
+        <span class="pno">Plate VI</span>
+        <h2 id="p6">How it works</h2>
+        <p>Two pipelines share one data source. Both skills ship the same <code>dem.py</code>.</p>
+      </div>
+      <div class="main how">
+        <div>
+          <h3>Prints</h3>
+          <svg viewBox="0 0 420 250" role="img" aria-label="Print pipeline: elevation tiles, view-aligned grid, perspective rows, floating horizon, styles">
+            <g>
+              <rect class="svg-fill" x="4" y="8" width="150" height="46" rx="2"/>
+              <text class="svg-t" x="14" y="28">elevation tiles</text><text class="svg-m" x="14" y="44">terrarium PNG → metres</text>
+              <rect class="svg-fill" x="4" y="74" width="150" height="46" rx="2"/>
+              <text class="svg-t" x="14" y="94">view-aligned grid</text><text class="svg-m" x="14" y="110">rows away from the viewer</text>
+              <rect class="svg-fill" x="4" y="140" width="150" height="46" rx="2"/>
+              <text class="svg-t" x="14" y="160">floating horizon</text><text class="svg-m" x="14" y="176">hide what's behind</text>
+              <rect class="svg-fill" x="4" y="206" width="150" height="40" rx="2"/>
+              <text class="svg-t" x="14" y="226">G-buffer</text><text class="svg-m" x="14" y="240">row that owns each pixel</text>
+              <path class="svg-a" d="M79 54v18M79 120v18M79 186v18" stroke-width="1.5"/>
+              <path class="svg-a" d="M154 226 C 200 226, 196 40, 236 40 M154 226 C 205 226, 200 96, 236 96 M154 226 C 210 226, 210 152, 236 152 M154 226 C 214 226, 214 208, 236 208" stroke-width="1.2"/>
+            </g>
+            <g>
+              <path class="svg-ink" stroke-width="1" d="M240 48 q14 -14 28 -6 t26 -10 t28 8 t30 -4 t28 6 t26 -2"/>
+              <path class="svg-ink" stroke-width="1" d="M240 56 q14 -10 28 -4 t26 -8 t28 6 t30 -2 t28 4 t26 -1"/>
+              <text class="svg-m" x="240" y="72">survey · stipple · nocturne</text>
+              <path class="svg-ink" stroke-width="1" d="M244 104 q60 -26 120 0 M256 110 q48 -18 96 0 M268 116 q36 -11 72 0"/>
+              <text class="svg-m" x="240" y="130">topo: true contours</text>
+              <circle class="svg-af" cx="370" cy="160" r="9" opacity=".8"/>
+              <path class="svg-ink" stroke-width="1" d="M240 170 q30 -22 60 -4 t60 -2 t50 2"/>
+              <text class="svg-m" x="240" y="186">riso: two inks, halftone</text>
+              <path class="svg-ink" stroke-width="3.5" d="M240 222 q30 -18 60 -3 t60 -2 t50 2"/>
+              <text class="svg-m" x="240" y="242">woodcut: carved mass</text>
+            </g>
+          </svg>
+          <p>Rows are projected near to far; a point is drawn only if it rises above everything drawn before it in its column. The buffer that remembers which row owns each pixel lets every style sample height, shade and snow per pixel.</p>
+        </div>
+        <div>
+          <h3>Photographs</h3>
+          <svg viewBox="0 0 420 250" role="img" aria-label="Photo pipeline: heightfield, ray march, atmosphere, near field, tone mapping, optional painting">
+            <rect class="svg-fill" x="4" y="8" width="130" height="46" rx="2"/>
+            <text class="svg-t" x="14" y="28">heightfield</text><text class="svg-m" x="14" y="44">40 m grid, Earth curve</text>
+            <rect class="svg-fill" x="146" y="8" width="130" height="46" rx="2"/>
+            <text class="svg-t" x="156" y="28">ray march</text><text class="svg-m" x="156" y="44">up to 900 steps</text>
+            <rect class="svg-fill" x="288" y="8" width="128" height="46" rx="2"/>
+            <text class="svg-t" x="298" y="28">sun shadow</text><text class="svg-m" x="298" y="44">soft, 70 steps</text>
+            <path class="svg-a" d="M134 31h10M276 31h10" stroke-width="1.5"/>
+            <rect class="svg-fill" x="4" y="100" width="196" height="46" rx="2"/>
+            <text class="svg-t" x="14" y="120">atmosphere</text><text class="svg-m" x="14" y="136">Rayleigh + Mie, mist, clouds</text>
+            <rect class="svg-fill" x="220" y="100" width="196" height="46" rx="2"/>
+            <text class="svg-t" x="230" y="120">near field</text><text class="svg-m" x="230" y="136">water, trees, villages, lights</text>
+            <path class="svg-a" d="M352 54 C 352 80, 102 74, 102 98 M352 54 C 352 78, 318 80, 318 98" stroke-width="1.2"/>
+            <rect class="svg-fill" x="4" y="192" width="196" height="46" rx="2"/>
+            <text class="svg-t" x="14" y="212">post</text><text class="svg-m" x="14" y="228">ACES tone map, grain, bokeh</text>
+            <rect class="svg-fill" x="220" y="192" width="196" height="46" rx="2" stroke-dasharray="4 3"/>
+            <text class="svg-t" x="230" y="212">paint.py (optional)</text><text class="svg-m" x="230" y="228">oil · watercolour · ink</text>
+            <path class="svg-a" d="M102 146v44M318 146 C 318 170, 102 168, 102 190M200 215h18" stroke-width="1.2"/>
+          </svg>
+          <p>Each pixel's ray walks the heightfield until it hits ground, then asks the sky how much light reaches that point and how much air sits between it and the camera. Everything is resumable in row bands, so a slow render survives a time-limited shell.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Plate VII: get -->
+    <section class="plate" aria-labelledby="p7">
+      <div class="margin">
+        <span class="pno">Colophon</span>
+        <h2 id="p7">Make your own</h2>
+        <p>Both skills are plain folders of Python and Markdown. Install them in Claude and ask for a mountain.</p>
+        <div class="data">Python 3 · numpy · scipy<br>pillow · matplotlib · contourpy<br>ffmpeg for video<br>no API keys</div>
+      </div>
+      <div class="main stack">
+        <div class="skills">
+          <article class="skill">
+            <h3>procedural-terrain-art</h3>
+            <p>Any real mountain in six print styles, orbit videos, and a self-contained interactive studio page.</p>
+            <ul><li>headers and banners at the right sizes</li><li>labels in the local script</li><li>landform-aware framing</li></ul>
+            <div class="row"><a class="btn" href="https://github.com/dogum/procedural-art/releases/latest/download/procedural-terrain-art.skill">Download .skill</a><a class="btn ghost" href="studio/ararat.html">Open the Ararat studio</a></div>
+          </article>
+          <article class="skill">
+            <h3>procedural-realism</h3>
+            <p>Photographic terrain with lakes, forests, villages and night lights, sun timelapses, a JSON-driven path tracer, and a painterly finisher.</p>
+            <ul><li>real sun paths by date and time</li><li>glass, metal, liquids, dispersion</li><li>paint any image, including photos</li></ul>
+            <div class="row"><a class="btn" href="https://github.com/dogum/procedural-art/releases/latest/download/procedural-realism.skill">Download .skill</a><a class="btn ghost" href="https://github.com/dogum/procedural-art/tree/main/skills/procedural-realism">Read the skill</a></div>
+          </article>
+        </div>
+        <div class="install" id="install">
+          <div><h3>Claude Code</h3><pre><code>/plugin marketplace add dogum/procedural-art
+/plugin install procedural-art@procedural-art</code></pre></div>
+          <div><h3>Claude.ai and Cowork</h3><ol class="steps"><li>Download both <code>.skill</code> files above.</li><li>Settings → Capabilities → Skills → upload each one.</li></ol></div>
+          <div><h3>Then ask</h3><ol class="steps"><li><em>“A woodcut X header of Mount Hood from Portland.”</em></li><li><em>“Mont Blanc reflected in Lac Blanc at golden hour, no image model.”</em></li><li><em>“Turn this photo into a watercolour.”</em></li></ol></div>
+        </div>
+        
+      </div>
+    </section>
+  </main>
+
+  <footer><span>Elevation: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a> (<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">sources and attribution</a>). Rendering: numpy, Canvas 2D.</span><span><a href="https://github.com/dogum/procedural-art">github.com/dogum/procedural-art</a> · Apache-2.0</span></footer>
+</div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+
+/* ---------- Plate I: styles ---------- */
+const STYLES = [
+  ["survey",   "engraved ridgelines, sun in the saddle"],
+  ["topo",     "true 40 m contours from a high camera"],
+  ["nocturne", "moonlit lines, stars, a crescent"],
+  ["stipple",  "pointillist dots, denser in shadow"],
+  ["riso",     "two spot inks, halftone, misregistration"],
+  ["woodcut",  "solid ink, carved lines widen in the light"],
+];
+const styleImg = $("#styleImg"), styleCap = $("#styleCap"), styleTabs = $("#styleTabs");
+STYLES.forEach(([k, d], i) => {
+  const b = document.createElement("button");
+  b.className = "tab"; b.type = "button"; b.setAttribute("role","tab"); b.id = "st-" + k;
+  b.textContent = k; b.setAttribute("aria-selected", i === 0 ? "true" : "false");
+  b.addEventListener("click", () => {
+    styleTabs.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t === b ? "true" : "false"));
+    styleImg.src = "media/st_" + k + ".jpg";
+    styleImg.alt = "Ararat in the " + k + " style: " + d;
+    styleCap.innerHTML = "<code>render.py --style " + k + "</code> · " + d;
+  });
+  styleTabs.appendChild(b);
+  const pre = new Image(); pre.src = "media/st_" + k + ".jpg";
+});
+
+/* ---------- Plate II: landforms ---------- */
+const LF = [
+  {k:"fuji", name:"Mount Fuji", kind:"cone", elev:"3776 m", ll:"35.3606° N 138.7274° E", from:"Lake Kawaguchi", style:"woodcut"},
+  {k:"ararat", name:"Ararat", kind:"twin volcano", elev:"5137 m", ll:"39.7019° N 44.2986° E", from:"Yerevan", style:"survey"},
+  {k:"matterhorn", name:"Matterhorn", kind:"horn", elev:"4478 m", ll:"45.9764° N 7.6586° E", from:"Riffelsee", style:"nocturne"},
+  {k:"denali", name:"Denali", kind:"massif", elev:"6190 m", ll:"63.0692° N 151.0064° W", from:"Wonder Lake", style:"stipple"},
+  {k:"teton", name:"Teton Range", kind:"range", elev:"4199 m", ll:"43.7412° N 110.8024° W", from:"Snake River Overlook", style:"survey"},
+  {k:"canyon", name:"Grand Canyon", kind:"canyon", elev:"2302 m", ll:"36.1305° N 112.0387° W", from:"Mather Point", style:"riso"},
+  {k:"maunakea", name:"Mauna Kea", kind:"island volcano", elev:"4207 m", ll:"19.8206° N 155.4681° W", from:"Hilo", style:"topo"},
+];
+const lfImg = $("#lfImg"), lfCap = $("#lfCap"), lfData = $("#lfData"), lfIndex = $("#lfIndex");
+function showLF(m) {
+  lfImg.src = "media/lf_" + m.k + ".jpg";
+  lfImg.alt = m.name + " from " + m.from + " in the " + m.style + " style";
+  lfCap.innerHTML = "<code>--style " + m.style + "</code> · detected landform: " + m.kind;
+  lfData.innerHTML = "<b>" + m.name + "</b> · " + m.elev + "<br>" + m.ll + "<br>view from " + m.from + "<br>landform: " + m.kind;
+  lfIndex.querySelectorAll(".lf").forEach(b => b.setAttribute("aria-selected", b.dataset.k === m.k ? "true" : "false"));
+}
+LF.forEach(m => {
+  const b = document.createElement("button");
+  b.className = "lf"; b.type = "button"; b.setAttribute("role","tab"); b.dataset.k = m.k; b.id = "lf-" + m.k;
+  b.innerHTML = '<img src="media/lf_' + m.k + '.jpg" alt="" width="1800" height="600" loading="lazy"><span><b>' + m.name + "</b>" + m.kind + "</span>";
+  b.addEventListener("click", () => showLF(m));
+  lfIndex.appendChild(b);
+});
+showLF(LF[0]);
+
+/* ---------- compare sliders ---------- */
+function wireCompare(box, range) {
+  const set = v => box.style.setProperty("--pos", v + "%");
+  range.addEventListener("input", () => set(range.value));
+  set(range.value);
+}
+wireCompare($("#mhCompare"), $("#mhRange"));
+wireCompare($("#paCompare"), $("#paRange"));
+
+/* ---------- Plate V: painting presets ---------- */
+const PA = [["watercolour", "pa_fuji_water"], ["oil", "pa_fuji_oil"]];
+const paTabs = $("#paTabs"), paUnder = $("#paUnder"), paLab = $("#paLab");
+PA.forEach(([label, file], i) => {
+  const b = document.createElement("button");
+  b.className = "tab"; b.type = "button"; b.setAttribute("role","tab"); b.id = "pa-" + file;
+  b.textContent = "paint.py --style " + (label === "watercolour" ? "watercolor" : label);
+  b.setAttribute("aria-selected", i === 0 ? "true" : "false");
+  b.addEventListener("click", () => {
+    paTabs.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t === b ? "true" : "false"));
+    paUnder.src = "media/" + file + ".jpg"; paUnder.alt = "The Fuji lake render painted as " + label;
+    paLab.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+  });
+  paTabs.appendChild(b);
+  const pre = new Image(); pre.src = "media/" + file + ".jpg";
+});
+
+/* ---------- save links point at whatever image is showing ---------- */
+document.querySelectorAll("a.save").forEach(a => {
+  const sync = () => { const img = document.getElementById(a.dataset.save); a.href = img.getAttribute("src"); a.setAttribute("download", img.getAttribute("src").split("/").pop()); };
+  sync(); a.addEventListener("pointerdown", sync); a.addEventListener("focus", sync);
+});
+
+/* hero video: respect reduced motion */
+if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  const v = $("#heroVid"); v.removeAttribute("autoplay"); v.pause(); v.controls = true;
+}
+</script>
+</body>
+</html>

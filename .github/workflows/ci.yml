@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Validate and package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate JSON manifests and versions
+        run: |
+          set -euo pipefail
+          for j in .claude-plugin/plugin.json .claude-plugin/marketplace.json; do python3 -m json.tool "$j" > /dev/null && echo "ok $j"; done
+          v1=$(python3 -c 'import json;print(json.load(open(".claude-plugin/plugin.json"))["version"])')
+          v2=$(python3 -c 'import json;print(json.load(open(".claude-plugin/marketplace.json"))["plugins"][0]["version"])')
+          [ "$v1" = "$v2" ] || { echo "plugin.json ($v1) and marketplace.json ($v2) differ"; exit 1; }
+          for s in skills/*/SKILL.md; do grep -q "version: \"$v1\"" "$s" || { echo "$s metadata.version != $v1"; exit 1; }; done
+
+      - name: Build both skill packages (frontmatter, references and dem.py checks)
+        run: scripts/build-skills.sh dist
+
+      - name: Validate plugin with Claude Code
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: skills
+          path: dist/*.skill
+
+  smoke:
+    name: Render smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Terrain art, every style (Fuji, real elevation, draft size)
+        working-directory: ${{ runner.temp }}
+        run: |
+          python "$GITHUB_WORKSPACE/skills/procedural-terrain-art/scripts/render.py" \
+            --peak 35.3606,138.7274 --from 35.5100,138.7550 --style all --size 600x200 --quality 0.4 --out out/fuji/
+      - name: Photographic terrain draft
+        working-directory: ${{ runner.temp }}
+        run: |
+          S="$GITHUB_WORKSPACE/skills/procedural-realism/scripts"
+          python "$S/pbr_terrain.py" --peak 35.3606,138.7274 --from 35.5100,138.7550 --size 300x100 --work work/fuji
+          python "$S/post_terrain.py" --bands work/fuji/bands_300x100 --out out/fuji_pbr.png
+      - name: Path tracer draft from a shipped scene
+        working-directory: ${{ runner.temp }}
+        run: |
+          S="$GITHUB_WORKSPACE/skills/procedural-realism"
+          python "$S/scripts/pathtracer.py" --scene "$S/scenes/prism_and_crystal.json" --size 300x100 --spp 2 --tag ci --work work/pt
+          python "$S/scripts/post_pathtrace.py" --tag ci --work work/pt --out out/prism.png
+      - name: Painterly finish
+        working-directory: ${{ runner.temp }}
+        run: |
+          python "$GITHUB_WORKSPACE/skills/procedural-realism/scripts/paint.py" --in out/fuji_pbr.png --out out/fuji_watercolor.png --style watercolor --size 600x200
+      - uses: actions/upload-artifact@v7
+        with:
+          name: smoke-renders
+          path: ${{ runner.temp }}/out

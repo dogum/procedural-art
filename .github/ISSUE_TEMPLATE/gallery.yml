@@ -1,0 +1,22 @@
+name: Show your render
+description: Share something you made with the skills
+title: "[gallery] "
+labels: [gallery]
+body:
+  - type: textarea
+    id: image
+    attributes:
+      label: The image or video
+      description: Drag it in. A downscaled copy is fine.
+    validations: { required: true }
+  - type: textarea
+    id: prompt
+    attributes:
+      label: The prompt or command
+      description: What you asked Claude, or the script command you ran.
+    validations: { required: true }
+  - type: input
+    id: place
+    attributes:
+      label: Place
+      placeholder: "e.g. Mount Hood from Trillium Lake"

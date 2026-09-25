@@ -1,0 +1,6 @@
+# Both skills run on CPU with these. ffmpeg (system package) is needed only for videos.
+numpy>=1.24
+scipy>=1.10
+pillow>=9.5
+matplotlib>=3.7    # procedural-terrain-art
+contourpy>=1.1     # procedural-terrain-art (topo style)
