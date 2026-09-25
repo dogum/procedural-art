@@ -13,7 +13,7 @@ Two Claude skills. Name any mountain on Earth and get an engraving, a woodcut, a
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d8935c)](#install)
 
-**[Showcase](https://dogum.github.io/procedural-art/)** · **[Studios in your browser](https://dogum.github.io/procedural-art/#studios)** · **[Latest release](https://github.com/dogum/procedural-art/releases/latest)** · **[Changelog](CHANGELOG.md)**
+**[Try any mountain in your browser](https://dogum.github.io/procedural-art/app/)** · **[Showcase](https://dogum.github.io/procedural-art/)** · **[Studios](https://dogum.github.io/procedural-art/#studios)** · **[Latest release](https://github.com/dogum/procedural-art/releases/latest)** · **[Changelog](CHANGELOG.md)**
 
 </div>
 
@@ -166,6 +166,10 @@ That exact command, unedited, on a mountain none of the tests use (15 s):
 
 Each `SKILL.md` has the full workflow, and `references/` covers the engine, scene format, terrain features and painting presets.
 
+## In your browser
+
+**[Any mountain](https://dogum.github.io/procedural-art/app/)** is the terrain engine as a web page. Type a peak, volcano or canyon, drag the viewpoint on the map, pick a style, and save a 3000 × 1000 header (or a LinkedIn, YouTube or wallpaper size). The page downloads 20 to 40 elevation tiles and measures the landform itself, so there is no server; a copied link reopens the same mountain, view and style. It draws with the same code as the studios below. 94 well-known peaks come with their classic viewpoint; anything else found on OpenStreetMap gets an automatic one.
+
 ## Studios in your browser
 
 `build_studio.py` writes one HTML file (about 0.76 MB) with a 512 × 512 elevation grid inside. Orbit the mountain, move the light, change the ink, and save a 3000 × 1000 PNG. No server and no libraries; the only network request is for web fonts. Five are live on the site: [Ararat](https://dogum.github.io/procedural-art/studio/ararat.html), [Fuji](https://dogum.github.io/procedural-art/studio/fuji.html), [Matterhorn](https://dogum.github.io/procedural-art/studio/matterhorn.html), [Denali](https://dogum.github.io/procedural-art/studio/denali.html) and the [Grand Canyon](https://dogum.github.io/procedural-art/studio/grand-canyon.html). The same pages work as claude.ai artifacts, where the Save button uses the artifact download capability: see the [Ararat studio](https://claude.ai/artifact/2nyskwgoMR3ieJoZP3n1Dk) and the [showcase](https://claude.ai/artifact/XqYinY4hfHVU6PdxYz3548) on claude.ai.
@@ -204,8 +208,8 @@ skills/
   procedural-terrain-art/     SKILL.md, scripts/, references/, assets/studio_template.html, evals/
   procedural-realism/         SKILL.md, scripts/, references/, scenes/*.json, evals/
 evals/                        claude plugin eval cases (should-trigger, should-not-trigger)
-docs/                         GitHub Pages: the showcase, five studios, media
-scripts/                      build-skills.sh (the Claude.ai packages), regression_terrain.py
+docs/                         GitHub Pages: the showcase, the Any mountain app (docs/app), five studios, media
+scripts/                      build-skills.sh (the Claude.ai packages), build-app.py (docs/app/engine.js), regression_terrain.py
 ```
 
 Both skills ship the same `scripts/dem.py`; the build refuses to package them if the copies differ.

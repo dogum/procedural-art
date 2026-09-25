@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Any mountain · procedural-art</title>
+<meta name="description" content="Type any mountain on Earth, pick a viewpoint and a print style, and save a 3000×1000 header. Real elevation data, drawn in your browser. No image model.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Any mountain, drawn from real elevation data">
+<meta property="og:description" content="Type a peak, drag the viewpoint, pick one of six print styles, save a header. Everything runs in your browser.">
+<meta property="og:image" content="https://dogum.github.io/procedural-art/media/og.jpg">
+<meta property="og:url" content="https://dogum.github.io/procedural-art/app/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26 L12 10 L17 17 L21 12 L30 26 Z' fill='%23d8935c'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://s3.amazonaws.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@1,500&family=JetBrains+Mono:wght@500&family=Noto+Serif:wght@400;500&family=Noto+Sans:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css?v=8ce805a375">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="../"><b>procedural-art</b> · any mountain</a>
+    <nav aria-label="Site"><a href="../">Showcase</a><a href="../#studios">Studios</a><a href="https://github.com/dogum/procedural-art">GitHub</a>
+      <button class="theme" id="themeBtn" type="button" aria-label="Switch light or dark theme"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button></nav>
+  </header>
+
+  <section class="finder" aria-labelledby="h1">
+    <h1 id="h1">Any <span>mountain</span></h1>
+    <div class="searchbox">
+      <div class="qwrap">
+      <form id="searchForm" role="search" autocomplete="off" onsubmit="return false">
+        <label class="visually-hidden" for="q">Search for a mountain</label>
+        <input id="q" type="search" placeholder="Any mountain, volcano or canyon…" spellcheck="false" autocomplete="off"
+          role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugg" enterkeyhint="search">
+        <button class="go" id="goBtn" type="submit" aria-label="Search">↵</button>
+      </form>
+      <div class="sugg" id="suggWrap" hidden>
+        <ul id="sugg" role="listbox" aria-label="Suggestions"></ul>
+        <p class="attrib" id="suggAttrib"></p>
+      </div>
+      </div>
+      <p class="hint">Or try <span id="chips"></span></p>
+    </div>
+  </section>
+
+  <main>
+    <div class="stage" id="stage">
+      <canvas id="art" role="img" aria-label="Rendered mountain"></canvas>
+      <div class="veil" id="veil" aria-hidden="true"><div class="bar"><i id="barFill"></i></div><p id="veilText">Loading…</p><button class="btn ghost" id="retryBtn" type="button" hidden>Try again</button></div>
+    </div>
+    <div class="under">
+      <div class="caption" id="caption"><h2 id="capName">&nbsp;</h2><p id="capMeta">&nbsp;</p></div>
+      <div class="actions">
+        <button class="btn ghost" id="orbitBtn" type="button" aria-pressed="false">▶ Orbit</button>
+        <button class="btn ghost" id="linkBtn" type="button">Copy link</button>
+        <label class="visually-hidden" for="sizeSel">Output size</label>
+        <select id="sizeSel" class="sel">
+          <option value="x">X header · 3000×1000</option>
+          <option value="linkedin">LinkedIn · 3168×792</option>
+          <option value="youtube">YouTube · 2560×1440</option>
+          <option value="wallpaper">Wallpaper · 3840×2160</option>
+        </select>
+        <button class="btn" id="saveBtn" type="button">Save PNG</button>
+      </div>
+    </div>
+    <p class="status" id="status" aria-live="polite"></p>
+
+    <div class="styles" id="styles" role="group" aria-label="Print style"></div>
+
+    <form class="controls" id="controls" onsubmit="return false">
+      <fieldset class="viewfs"><legend>Viewpoint</legend>
+        <div class="mapbox">
+          <canvas id="map" width="480" height="480" tabindex="0" aria-label="Map of the mountain. Drag the dot to move the viewpoint; arrow keys turn it around the summit."></canvas>
+        </div>
+        <p class="viewinfo" id="viewInfo">&nbsp;</p>
+        <div class="row"><label for="dist">Distance</label><input type="range" id="dist" min="2" max="100" step="0.1"><output for="dist"></output></div>
+        <div class="rowbtns"><button class="btn ghost small" id="autoBtn" type="button">Auto viewpoint</button><button class="btn ghost small" id="classicBtn" type="button" hidden>Classic view</button></div>
+      </fieldset>
+      <fieldset><legend>Camera</legend>
+        <div class="row"><label for="yaw">Orbit</label><input type="range" id="yaw" min="-180" max="180" step="1"><output for="yaw"></output></div>
+        <div class="row"><label for="camh">Altitude</label><input type="range" id="camh" min="0.5" max="40" step="0.1"><output for="camh"></output></div>
+        <div class="row"><label for="zoom">Zoom</label><input type="range" id="zoom" min="0.5" max="2" step="0.01"><output for="zoom"></output></div>
+        <div class="row"><label for="relief">Relief</label><input type="range" id="relief" min="0.4" max="2.2" step="0.01"><output for="relief"></output></div>
+        <div class="row"><label for="panX">Pan ↔</label><input type="range" id="panX" min="-900" max="700" step="5"><output for="panX"></output></div>
+        <div class="row"><label for="panY">Pan ↕</label><input type="range" id="panY" min="-400" max="500" step="5"><output for="panY"></output></div>
+      </fieldset>
+      <fieldset><legend>Light</legend>
+        <div class="row"><label for="lightAz">Direction</label><input type="range" id="lightAz" min="-180" max="180" step="1"><output for="lightAz"></output></div>
+        <div class="row"><label for="lightEl">Height</label><input type="range" id="lightEl" min="5" max="85" step="1"><output for="lightEl"></output></div>
+        <div class="row"><label for="snow">Snowline</label><input type="range" id="snow" min="0" max="9000" step="10"><output for="snow"></output></div>
+        <div class="row"><label for="sunY">Sun height</label><input type="range" id="sunY" min="-300" max="300" step="5"><output for="sunY"></output></div>
+        <h3>Ink &amp; detail</h3>
+        <div class="row"><label for="spacing">Line gap</label><input type="range" id="spacing" min="0.18" max="1.2" step="0.01"><output for="spacing"></output></div>
+        <div class="row"><label for="weight">Weight</label><input type="range" id="weight" min="0.3" max="2.5" step="0.01"><output for="weight"></output></div>
+        <div class="swatches">
+          <label>paper<input type="color" id="paper"></label>
+          <label>ink<input type="color" id="ink"></label>
+          <label>accent<input type="color" id="accent"></label>
+          <button class="btn ghost small" id="resetBtn" type="button">Reset style</button>
+        </div>
+      </fieldset>
+      <fieldset><legend>Labels &amp; ornaments</legend>
+        <div class="field"><label for="lblName">Label</label><input type="text" id="lblName" maxlength="40"></div>
+        <div class="field"><label for="lblSub">Subtitle</label><input type="text" id="lblSub" maxlength="40"></div>
+        <div class="field"><label for="lblTitle">Title <small>(riso, woodcut)</small></label><input type="text" id="lblTitle" maxlength="40"></div>
+        <div class="checks">
+          <label><input type="checkbox" id="labels"> Labels</label>
+          <label><input type="checkbox" id="sun"> Sun / moon</label>
+          <label><input type="checkbox" id="network"> Network</label>
+          <label><input type="checkbox" id="guide"> Photo guide</label>
+        </div>
+        <button class="btn ghost small" id="seedBtn" type="button">Reseed</button>
+        <p class="fine">The photo guide marks roughly where a profile picture or a safe area sits on the chosen platform. It is never saved.</p>
+      </fieldset>
+    </form>
+
+    <section class="about" aria-labelledby="aboutH">
+      <h2 id="aboutH">How this works</h2>
+      <ol>
+        <li><b>Elevation.</b> Your browser downloads a few dozen terrain tiles (SRTM and other public data) around the summit, about 250 m per sample for the scene and finer at the peak.</li>
+        <li><b>Landform.</b> It measures the ground on rings around the summit, as the Python skill does: how steep the peak is, what stands in front of it, how rough it is, whether it sits below a plateau. Cones, horns, ranges, canyons and islands each get their own framing.</li>
+        <li><b>Drawing.</b> A perspective camera, a floating horizon that hides what is behind, and one of six print styles. It is the same engine as the studio pages and the <a href="https://github.com/dogum/procedural-art/tree/main/skills/procedural-terrain-art">procedural-terrain-art</a> Claude skill, which renders these at any size in Python.</li>
+      </ol>
+      <p class="fine">No image model is involved and nothing is uploaded: search terms go to the geocoder, everything else happens on this page.</p>
+    </section>
+  </main>
+  <footer>
+    <span>Elevation: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a> (<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">sources</a>). Search: <a href="https://photon.komoot.io">Photon</a> and <a href="https://nominatim.openstreetmap.org">Nominatim</a>, data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. Curated summits and viewpoints from OpenStreetMap, checked against the elevation data.</span>
+    <span><a href="https://github.com/dogum/procedural-art">github.com/dogum/procedural-art</a> · Apache-2.0</span>
+  </footer>
+</div>
+<script src="engine.js?v=be97163d04"></script>
+<script src="terrain.js?v=7aad94990e"></script>
+<script src="app.js?v=a715dbc2f7"></script>
+</body>
+</html>

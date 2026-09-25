@@ -57,6 +57,11 @@ h1{font-family:var(--display);font-weight:900;text-transform:uppercase;letter-sp
 h1 .thin{font-weight:600;color:var(--contour)}
 .thesis{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:clamp(18px,4vw,64px);margin-top:22px;align-items:start}
 .thesis p{margin:0;max-width:60ch;font-size:clamp(1.12rem,1.7vw,1.32rem);line-height:1.5}
+.stage-cta{position:absolute;z-index:2;right:clamp(10px,1.6vw,22px);bottom:clamp(10px,1.6vw,22px);font-family:var(--mono);font-size:clamp(.72rem,1.1vw,.86rem);letter-spacing:.02em;padding:10px 14px;border-radius:2px;background:#f1efe8;color:#1c222a;text-decoration:none;box-shadow:0 10px 30px -10px rgba(0,0,0,.6)}
+@media (max-width:640px){.stage-cta{padding:6px 9px;font-size:.66rem;right:8px;bottom:8px}}
+.stage-cta:hover{background:#d8935c;color:#121417}
+.stage-cta:focus-visible{outline:2px solid #d8935c;outline-offset:3px}
+.thesis .cta{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-top:20px}
 .ledger{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;border-top:2px solid var(--ink)}
 .ledger div{padding:10px 0 12px;border-bottom:1px solid var(--rule)}
 .ledger div:nth-child(odd){padding-right:14px}
@@ -172,13 +177,17 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
 
 <div class="wrap">
   <header class="hero">
-    <div class="hero-top"><span><b>procedural-art</b> · two Claude skills · no image model</span><nav class="topnav" aria-label="Site"><a href="#studios">Studios</a><a href="#install">Install</a><a href="https://github.com/dogum/procedural-art">GitHub</a></nav></div>
+    <div class="hero-top"><span><b>procedural-art</b> · two Claude skills · no image model</span><nav class="topnav" aria-label="Site"><a href="app/">Any mountain</a><a href="#studios">Studios</a><a href="#install">Install</a><a href="https://github.com/dogum/procedural-art">GitHub</a></nav></div>
     <div class="stage">
+      <a class="stage-cta" href="app/">Try any mountain <span aria-hidden="true">→</span></a>
       <video id="heroVid" src="media/orbit.mp4" poster="media/orbit_poster.jpg" autoplay muted loop playsinline aria-label="Ararat in the moonlit line style, orbiting slowly"></video>
     </div>
     <h1>Ararat <span class="thin">&amp; other</span> mountains</h1>
     <div class="thesis">
-      <p>Every picture here was computed. Real elevation data, a perspective camera and a few thousand lines of Python produce the line engravings; a ray marcher with a physical sky produces the photographs; a path tracer written from scratch produces the glass. No generative image model touched any pixel. Two Claude skills package all of it, so you can point them at any mountain on Earth.</p>
+      <div>
+        <p>Every picture here was computed. Real elevation data, a perspective camera and a few thousand lines of Python produce the line engravings; a ray marcher with a physical sky produces the photographs; a path tracer written from scratch produces the glass. No generative image model touched any pixel. Two Claude skills package all of it, so you can point them at any mountain on Earth.</p>
+        <p class="cta"><a class="btn" href="app/">Try any mountain →</a><span class="note">type a peak, pick a style, save a header. Runs in your browser.</span></p>
+      </div>
       <dl class="ledger">
         <div><dt>Print styles</dt><dd>6</dd></div>
         <div><dt>Landforms tested</dt><dd>7</dd></div>
@@ -338,6 +347,8 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
         <span class="pno">Try it</span>
         <h2 id="pst">Studios in your browser</h2>
         <p>Each studio is one HTML file with a 512 × 512 elevation grid inside it. Orbit the mountain, move the light, change the ink, and save a 3000 × 1000 PNG. No server, no install.</p>
+        <p><a class="btn" href="app/">Try any mountain</a></p>
+        <p>Or skip the file: the <a href="app/">Any mountain</a> page runs the same engine on any peak you type, fetching the elevation as you go.</p>
         <div class="data">about 0.76 MB each<br>Canvas 2D, no libraries<br>built by <b>build_studio.py</b></div>
       </div>
       <div class="main">

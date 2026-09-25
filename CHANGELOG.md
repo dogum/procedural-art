@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Versions follow [semant
 
 ## [Unreleased]
 
+### Web app
+- **[Any mountain](https://dogum.github.io/procedural-art/app/)**: type any mountain on Earth, drag the viewpoint on a hillshade map, pick one of the six print styles, and save an X, LinkedIn, YouTube or wallpaper PNG. Everything runs in the browser: elevation tiles are fetched and measured on the page with a JavaScript port of the landform analysis (it matches the Python on the seven regression landforms). 94 curated peaks with classic viewpoints, OpenStreetMap search for everything else and an automatic viewpoint, and links that reopen the same view.
+- The six styles and the camera are one code path: `scripts/build-app.py` copies the engine from the studio template into `docs/app/engine.js`, and CI fails if it is out of date. Studio pages render pixel for pixel as before.
+
 ### procedural-terrain-art
 - Topo on rough terrain uses illuminated contours: lines on slopes facing away from the light are heavier, so horns and ranges read as relief instead of stacked steps. Crowded intermediate contours drop out whole, and index lines that peek over a ridge are drawn light (no more dark ledges). Cones are unchanged.
 - Grand Canyon woodcut carves by depth below the rim: the gorge and shaded side canyons print black, the rim, buttes and lit walls stay paper.

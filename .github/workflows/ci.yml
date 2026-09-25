@@ -25,6 +25,14 @@ jobs:
       - name: Build both skill packages (frontmatter, references and dem.py checks)
         run: scripts/build-skills.sh dist
 
+      - name: Web app (docs/app) is built from the current studio engine
+        run: |
+          set -euo pipefail
+          python3 scripts/build-app.py
+          if ! git diff --exit-code -- docs/app || [ -n "$(git status --porcelain -- docs/app)" ]; then
+            echo "docs/app is out of date: run python scripts/build-app.py and commit the result"; exit 1
+          fi
+
       - name: Validate plugin with Claude Code
         run: |
           npm install -g @anthropic-ai/claude-code

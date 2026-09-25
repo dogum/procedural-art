@@ -268,7 +268,8 @@ function lighting(t, az, el, snowAbs){
 /* ---------------- scene / projection ---------------- */
 function makeScene(t, W, H){
   const s = W / 3000, pre = PRESETS[P.style];
-  const fx = 4500 * P.zoom, fy = pre.fyBase * P.zoom * P.relief, cx = 2150 + P.panX, hy = pre.hyBase + P.panY, camh = P.camh, hm = pre.hmul;
+  const al = P.align, oy = al ? (H / s - 1000) * 0.55 : 0;       // P.align (set by the app): re-centre non-3:1 frames; "center" as in render.py
+  const fx = 4500 * P.zoom, fy = pre.fyBase * P.zoom * P.relief, cx = 2150 + P.panX - (al === "center" ? 650 : 0), hy = pre.hyBase + P.panY + oy, camh = P.camh, hm = pre.hmul;
   const { NX, NZ, du, dv, h } = t;
   const Y = new Float32Array(NZ * W), CM = new Float32Array(NZ * W);
   for (let i = 0; i < NZ; i++){
@@ -284,7 +285,7 @@ function makeScene(t, W, H){
     }
   }
   const sc = { t, W, H, s, fx, fy, cx, hy, camh, hm, Y, CM,
-    fadeX: cx - 1150,
+    fadeX: al === "center" ? -1e9 : cx - 1150, oy,
     proj(u, v, hh){ const d = v - ZCAM; return [s * (cx + fx * u / d), s * (hy - fy * (hh * hm - camh) / d)]; },
     sampleRow(field, i, px){ const d = V0 + i * dv - ZCAM, u = (px / s - cx) * d / fx, j = (u - U0) / du;
       if (j < 0 || j > NX - 1) return 0; const j0 = Math.min(j | 0, NX - 2), f = j - j0;
@@ -505,9 +506,9 @@ function sunSpot(sc, c, r, peak, avoid = [], target = 0.72, lo = 0.4, jagMax = 0
 }
 /* Vertical pan (reference px) that keeps the skyline clear of the top edge and the foreground clear of the
    bottom edge. Same rules as fit_offset() in render.py; only used for horns and canyons (AUTO.fit). */
-function autoPanY(st){
+function autoPanY(st, align){
   if (!AUTO.fit) return 0;
-  const saved = P; P = { style: st, seed: saved.seed, ...structuredClone(PRESETS[st]), panY: 0 };
+  const saved = P; P = { style: st, seed: saved.seed, ...structuredClone(PRESETS[st]), panY: 0, align };
   const t = buildTerrain(0, 300, 260), sc = makeScene(t, 900, 300); P = saved;
   const { s, W, H } = sc, Href = H / s, sil = [], yb = [], ib = Math.min(t.NZ - 1, Math.ceil(0.5 * NF / t.dv));
   for (let x = 0; x < W; x++){ if (x / s <= sc.fadeX + 300) continue; const y = sc.CM[(t.NZ - 1) * W + x]; if (isFinite(y)) sil.push(y / s);
@@ -784,8 +785,8 @@ function renderRiso(ctx, sc){
     return [Math.pow(clamp01((hh - 0.15) / 0.9), 0.8) * edgeFade(sc, px, u, v) * (0.5 + 0.8 * (1 - l)), 1.6 - 0.7 * dep];
   }, [0, 0, 0]);
   drawCoast(bctx, sc, [0, 0, 0], 0.9, 1.1);
-  if (P.labels){ bctx.fillStyle = "#000"; bctx.font = `500 ${128 * s}px ${CFG.titleFont}`; bctx.fillText(CFG.native, 120 * s, 190 * s);
-    bctx.font = `500 ${25 * s}px "JetBrains Mono", monospace`; bctx.fillText(CFG.risoSub, 124 * s, 245 * s); }
+  if (P.labels){ bctx.fillStyle = "#000"; bctx.font = `500 ${128 * s}px ${CFG.titleFont}`; bctx.fillText(CFG.native, 120 * s, (190 + sc.oy) * s);
+    bctx.font = `500 ${25 * s}px "JetBrains Mono", monospace`; bctx.fillText(CFG.risoSub, 124 * s, (245 + sc.oy) * s); }
   const bdata = bctx.getImageData(0, 0, W, H).data;
   const owner = gbuffer(sc), pk = peaks(sc);
   const sAnc = sunAnchor(pk, s), sunR = 210 * s, sun0 = [sAnc[0] + 10 * s, sAnc[1] + (10 + P.sunY) * s], sun = P.sunY ? sun0 : sunSpot(sc, sun0, sunR, pk[0]);

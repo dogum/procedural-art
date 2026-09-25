@@ -129,6 +129,7 @@ def main():
                footnote=f"{abs(la):.2f}°{'N' if la >= 0 else 'S'}  {abs(lo):.2f}°{'E' if lo >= 0 else 'W'}  ·  elevation data, viewed from {a.from_name}",
                risoSub=f"{a.name.upper()}  ·  " + "  ·  ".join(p["sub"] for p in peaks if p["sub"]))
     html = open(TEMPLATE, encoding="utf-8").read()
+    html = re.sub(r"/\* @@ENGINE-(BEGIN|END)\b.*?\*/\n", "", html, flags=re.S)   # engine markers, used by the web app build
     esc = htmlmod.escape                          # user text goes into HTML text and attributes
     subs = {"__CONFIG__": json.dumps(cfg, ensure_ascii=False).replace("</", "<\\/"),   # no </script> inside the JSON
             "__DEM__": base64.b64encode(G.tobytes()).decode(),

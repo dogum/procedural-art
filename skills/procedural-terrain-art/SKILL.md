@@ -116,6 +116,8 @@ python $SK/scripts/build_studio.py --peak 35.3606,138.7274 --from 35.5100,138.75
 
 This produces one self-contained HTML file of about 0.8 MB. It embeds a 512×512 elevation grid, renders with plain Canvas 2D, and makes no network calls at runtime (Google Fonts only). It has all six styles, sliders for camera, light and colour, an orbit animation, and a 3000×1000 PNG export. The same landform-aware framing, water layer, sun placement and label lifting run in the page; `--no-shape` uses the cone rules and `--no-water` leaves water out. It takes `--from` or `--facing` like render.py and reuses the `dem_<lat>_<lon>.npz` next to `--out`. To publish it as a claude.ai artifact, declare the `downloads` capability so the Save button works; the page falls back to showing the image to save manually if the capability is unavailable. Verify it headless with Playwright if available: load it, click each style tile, and check for console errors.
 
+The studio's drawing code is shared with the public web app at https://dogum.github.io/procedural-art/app/, which fetches elevation for any mountain in the browser. If someone only wants to try a mountain quickly and has no Python, point them there.
+
 ## Video
 
 ```bash
