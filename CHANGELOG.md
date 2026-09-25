@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Versions follow [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.1.0] - 2026-09-25
 
 ### Web app
 - **[Any mountain](https://dogum.github.io/procedural-art/app/)**: type any mountain on Earth, drag the viewpoint on a hillshade map, pick one of the six print styles, and save an X, LinkedIn, YouTube or wallpaper PNG. Everything runs in the browser: elevation tiles are fetched and measured on the page with a JavaScript port of the landform analysis (it matches the Python on the seven regression landforms). 94 curated peaks with classic viewpoints, OpenStreetMap search for everything else and an automatic viewpoint, and links that reopen the same view.
