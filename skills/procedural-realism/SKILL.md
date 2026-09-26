@@ -3,7 +3,7 @@ name: procedural-realism
 description: Make photographic-style images with pure code and physics, no generative image model. Ray-marched terrain of any real mountain with physical sky, haze, shadows, snow, mist and clouds; mirror lakes; forests and villages; blue hour with a lit city or a moonlit starry night; sunset timelapse videos along the real sun path. A from-scratch path tracer renders JSON still lifes (glass, prisms with rainbow caustics, copper, fruit). A painterly finisher turns any image, including an uploaded photo, into oil, impasto, gouache, watercolour or ink. Use whenever someone wants a realistic or "CGI" render made from code, a photoreal landscape of a real place, a 3D still life without Blender, a painting of a render or photo, or an image path traced or ray traced from scratch with "no AI image". Not for help with other renderers (Blender, Cycles, Unreal), explaining rendering in words, photo filters or real-paint advice. For line-art, contour, riso or woodcut styles, use procedural-terrain-art.
 license: Apache-2.0
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   homepage: https://dogum.github.io/procedural-art/
 ---
 

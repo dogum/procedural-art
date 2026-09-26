@@ -2,7 +2,7 @@
   "name": "procedural-art",
   "displayName": "Procedural Art",
   "description": "Real mountains, glass and paintings made with code and real elevation data, no image model. Six print styles for any peak on Earth, photographic terrain with lakes and city lights, a path tracer for still lifes, and a painterly finisher.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": {
     "name": "dogum",
     "url": "https://github.com/dogum"

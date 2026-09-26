@@ -116,6 +116,7 @@ figcaption code{font-family:var(--mono);color:var(--ink)}
 .pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(14px,2vw,24px);margin-top:clamp(14px,2vw,24px)}
 .stack{display:grid;gap:clamp(18px,2.4vw,30px)}
 .video{aspect-ratio:3/1;width:100%;background:#000;border-radius:2px}
+.video.tall{aspect-ratio:4/5;width:min(100%,340px);display:block;margin:0 auto}
 
 /* how it works */
 .how{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(18px,3vw,40px)}
@@ -283,8 +284,12 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
           </figure>
         </div>
         <figure>
-          <video class="video" src="media/timelapse.mp4" poster="media/timelapse_poster.jpg" controls muted loop playsinline preload="none" aria-label="Sunset timelapse of Ararat from Yerevan, golden light into night with city lights coming on"></video>
-          <figcaption><span>Sunset over Ararat · real sun path for 20 April, 18:40–20:40 · 40 rendered keyframes · <code>timelapse.py</code></span></figcaption>
+          <video class="video" src="media/timelapse.mp4" poster="media/timelapse_poster.jpg" controls muted loop playsinline preload="none" aria-label="Sunset timelapse of Ararat from Yerevan: the sun sets behind the western shoulder, shadows lengthen across the city, blue hour falls and the street lights come on"></video>
+          <figcaption><span>Sunset into blue hour over Yerevan · real sun path for 3 December, 16:55–18:10 · every frame rendered, so shadows move · <code>timelapse.py</code></span></figcaption>
+        </figure>
+        <figure>
+          <video class="video tall" src="media/timelapse_vertical.mp4" poster="media/timelapse_vertical_poster.jpg" controls muted loop playsinline preload="none" aria-label="Vertical 4:5 version of the Ararat sunset timelapse for phones"></video>
+          <figcaption><span>The same evening, 4:5 for phones · <code>--layout center --hfov 10.5</code></span></figcaption>
         </figure>
       </div>
     </section>

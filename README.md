@@ -90,7 +90,7 @@ The same elevation, ray-marched through a physical atmosphere: Rayleigh and Mie 
 </tr>
 </table>
 
-There's also a [sunset timelapse](https://dogum.github.io/procedural-art/media/timelapse.mp4) along the real sun path for a date and place, from golden hour into night.
+There's also a [sunset timelapse](https://dogum.github.io/procedural-art/media/timelapse.mp4) along the real sun path for a date and place: every frame is rendered with the sun where it is at that moment, so shadows move across Yerevan as the sun sets behind Ararat and the street lights come on. A [4:5 version](https://dogum.github.io/procedural-art/media/timelapse_vertical.mp4) suits phones.
 
 ## Glass, from scratch
 

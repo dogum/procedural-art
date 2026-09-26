@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Versions follow [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.0] - 2026-09-26
 
 ### Web app
 - The picture stays pinned at the top while you scroll through the controls, so every slider change is visible as it happens (phones, and 3:1 or 4:1 sizes on larger screens).

@@ -3,7 +3,7 @@ name: procedural-terrain-art
 description: Turn any real mountain, volcano, range, canyon or island on Earth into high-resolution procedural art from actual elevation data, in six print styles (engraved ridgelines, topographic contours, moonlit nocturne, stipple, risograph, woodcut), plus looping orbit videos and a self-contained interactive web studio. Framing adapts to the landform, so cones, horns like the Matterhorn, massifs, ranges, canyons and islands all work. Use this whenever someone wants a mountain or landscape drawn with code, a profile header or banner (X/Twitter, LinkedIn, YouTube), poster, wallpaper or print of a real place, Unknown Pleasures-style ridgeline art of a real mountain, topographic or contour-line art, or asks to recreate an AI-generated landscape with code, even if they never say "terrain" or "elevation". Not for copying the album cover itself, GIS work (hillshade, viewshed, QGIS maps), 3D-print models or logos. For photographic renders, lakes, night cities or painted looks, use procedural-realism.
 license: Apache-2.0
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   homepage: https://dogum.github.io/procedural-art/
 ---
 
