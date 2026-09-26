@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://s3.amazonaws.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@1,500&family=JetBrains+Mono:wght@500&family=Noto+Serif:wght@400;500&family=Noto+Sans:wght@500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=8ce805a375">
+<link rel="stylesheet" href="app.css?v=b17d4dc9c0">
 </head>
 <body>
 <div class="wrap">
@@ -46,6 +46,8 @@
   </section>
 
   <main>
+    <div class="work" id="work">
+    <div class="pinmark" id="pinmark" aria-hidden="true"></div>
     <div class="stage" id="stage">
       <canvas id="art" role="img" aria-label="Rendered mountain"></canvas>
       <div class="veil" id="veil" aria-hidden="true"><div class="bar"><i id="barFill"></i></div><p id="veilText">Loading…</p><button class="btn ghost" id="retryBtn" type="button" hidden>Try again</button></div>
@@ -115,6 +117,7 @@
         <p class="fine">The photo guide marks roughly where a profile picture or a safe area sits on the chosen platform. It is never saved.</p>
       </fieldset>
     </form>
+    </div>
 
     <section class="about" aria-labelledby="aboutH">
       <h2 id="aboutH">How this works</h2>
@@ -133,6 +136,6 @@
 </div>
 <script src="engine.js?v=be97163d04"></script>
 <script src="terrain.js?v=7aad94990e"></script>
-<script src="app.js?v=a715dbc2f7"></script>
+<script src="app.js?v=f14c6313dc"></script>
 </body>
 </html>

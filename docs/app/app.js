@@ -561,3 +561,27 @@
   })();
   window.__app = S;                        // for tests and the curious
 })();
+
+// Keep the picture in view while the controls scroll underneath it, whenever it is short enough to leave room
+// (phones, and 3:1 or 4:1 sizes on a desktop). "stuck" adds a paper band so the page doesn't show around it.
+(function pinStage(){
+  const stage = document.getElementById("stage"), mark = document.getElementById("pinmark"), wrap = stage.closest(".wrap");
+  if (!stage || !mark || !("ResizeObserver" in window)) return;
+  let pinned = false, stuck = false, queued = false;
+  function decide(){
+    const h = stage.getBoundingClientRect().height, vh = window.innerHeight || 1;
+    const want = h > 0 && h <= 0.5 * vh;
+    if (want !== pinned){ pinned = want; stage.classList.toggle("pin", pinned); }
+    if (wrap) stage.style.setProperty("--gutter", getComputedStyle(wrap).paddingLeft);
+    check();
+  }
+  function check(){
+    queued = false;
+    const s = pinned && mark.getBoundingClientRect().top < 0 && Math.abs(stage.getBoundingClientRect().top) < 1;
+    if (s !== stuck){ stuck = s; stage.classList.toggle("stuck", stuck); }
+  }
+  window.addEventListener("scroll", () => { if (!queued){ queued = true; requestAnimationFrame(check); } }, { passive: true });
+  window.addEventListener("resize", decide);
+  new ResizeObserver(decide).observe(stage);
+  decide();
+})();
