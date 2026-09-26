@@ -81,6 +81,10 @@ ap.add_argument("--seed", type=int, default=1, help="seed for trees / villages /
 ap.add_argument("--city", type=float, default=0.0, help="night city density 0..1: street lights, lit windows, sky glow (0 = off)")
 ap.add_argument("--city-km", type=float, default=12.0, help="city lights extend this far from the camera")
 ap.add_argument("--geom-cache", action="store_true", help="cache sun-independent geometry per band (speeds up sun-angle timelapses)")
+ap.add_argument("--streets", default="osm", choices=["osm", "grid"],
+                help="with --city: real streets from OpenStreetMap (needs network the first time; falls back to grid) or a synthetic grid")
+ap.add_argument("--traffic", type=float, default=0.5, help="with --city and OSM streets: car lights on major roads, 0..1 (0 = off)")
+ap.add_argument("--shutter", type=float, default=0.5, help="with --traffic: exposure in seconds; moving car lights become streaks this long")
 ap.add_argument("--near-lamps", type=int, default=0, help="with --city: a string of this many lamps 3.5-6 m in front of the lens (shows bokeh)")
 ap.add_argument("--aperture", type=float, default=0.0, help="thin-lens aperture diameter in mm for depth of field / bokeh (0 = pinhole)")
 ap.add_argument("--focus", type=float, default=None, help="focus distance km (default: the peak)")
@@ -106,6 +110,8 @@ RE = 6371.0 * 7 / 6
 # --aperture / --focus are post effects (post_terrain.py can override them); only "is there a lens" matters here.
 _pkeys = {k: v for k, v in vars(a).items() if k not in ("rows", "work", "dem", "tag", "geom_cache", "aperture", "focus")}
 _pkeys["depth_aux"] = a.aperture > 0
+if a.city <= 0:                                                            # city-only settings don't split daylight renders
+    for _k in ("streets", "traffic", "shutter"): _pkeys.pop(_k)
 _phash = hashlib.md5(json.dumps(_pkeys, sort_keys=True).encode()).hexdigest()[:10]
 _pfile = os.path.join(BANDS, "params.json"); _rfile = os.path.join(BANDS, "refused.json")
 if os.path.exists(_pfile):
@@ -247,7 +253,14 @@ if a.water_level is not None:
 
 def hf(x, y):
     return map_coordinates(HF, [(y - GN[0]) / RES, (x - GE[0]) / RES], order=1, mode="nearest")
-HFB = gaussian_filter(HF, 25)
+def _cached(name, key, make):
+    """with --geom-cache, keep a sun-independent array in --work between runs (timelapse frames)"""
+    if not a.geom_cache: return make()
+    f = os.path.join(a.work, f"{name}_" + hashlib.md5(json.dumps(key, sort_keys=True).encode()).hexdigest()[:10] + ".npy")
+    if os.path.exists(f): return np.load(f)
+    v = make(); np.save(f[:-4] + ".tmp.npy", v); os.replace(f[:-4] + ".tmp.npy", f)
+    return v
+HFB = _cached("hfb", [SITE, a.water_level, a.water_seed], lambda: gaussian_filter(HF, 25))
 
 # ------------------------------------------------------------------ noise
 _r = np.random.default_rng(7)
@@ -317,7 +330,7 @@ GEOM_DIR = None
 if a.geom_cache:                                                           # keyed by everything that moves geometry
     _gk = {k: v for k, v in _pkeys.items() if k in ("peak", "view_from", "size", "cam_height", "cam_offset", "hfov", "layout", "pitch",
            "horizon", "second", "base", "radius", "water_level", "water_seed", "trees", "tree_mix", "villages", "near_km", "seed",
-           "city", "city_km", "biome", "treeline", "season")}
+           "city", "city_km", "streets", "biome", "treeline", "season")}
     GEOM_DIR = os.path.join(a.work, "geom_" + hashlib.md5(json.dumps(_gk, sort_keys=True).encode()).hexdigest()[:10])
 
 def terrain_z(x, y):
@@ -333,6 +346,35 @@ BR = np.array([5.8e-3, 13.5e-3, 33.1e-3]) * a.air
 BM = np.array([21e-3] * 3); BMe = BM * 1.1
 BO = np.array([0.650e-3, 1.881e-3, 0.085e-3])                             # ozone absorption, per km at peak
 SUN_I, G = 22.0, 0.78
+# Twilight colour (physical sky). The three channels above are single wavelengths (680/550/440 nm). That is fine
+# for the short sun paths of daylight, but after sunset the sun reaches the sky through hundreds of km of air and the
+# ozone layer: each channel's band empties from the short end, and ozone's Chappuis band peaks at 600 nm, inside the
+# red channel, where at 680 nm it removes ~4x too little red. Single wavelengths then turn the blue hour lavender.
+# So with the sun below ~8° the sun LUT is integrated per wavelength (380-730 nm by 5; Chappuis cross-sections in m²,
+# 300 DU in a 10-40 km tent) and projected on sRGB with the CIE 1931 matching functions (Wyman et al. 2013 fit) and a
+# 5778 K sun. Checked against a 71-wavelength single-scattering reference (work notes): hue within ~5° from sun 0°
+# to -6°, where single wavelengths were 6-30° off toward violet. Above 10° the old values are kept unchanged.
+_O3 = np.array([1.18e-27, 2.182e-28, 2.818e-28, 6.636e-28, 1.527e-27, 2.763e-27, 5.52e-27, 8.451e-27, 1.582e-26,
+                2.316e-26, 3.669e-26, 4.924e-26, 7.752e-26, 9.016e-26, 1.48e-25, 1.602e-25, 2.139e-25, 2.755e-25,
+                3.091e-25, 3.5e-25, 4.266e-25, 4.672e-25, 4.398e-25, 4.701e-25, 5.019e-25, 4.305e-25, 3.74e-25,
+                3.215e-25, 2.662e-25, 2.238e-25, 1.852e-25, 1.473e-25, 1.209e-25, 9.423e-26, 7.455e-26, 6.566e-26,
+                5.105e-26, 4.15e-26, 4.228e-26])
+LAM = np.arange(380.0, 731.0, 5.0)
+def _lobe(m, s1, s2): return np.exp(-0.5 * ((LAM - m) / np.where(LAM < m, s1, s2)) ** 2)
+_CMF = np.stack([1.056 * _lobe(599.8, 37.9, 31.0) + 0.362 * _lobe(442.0, 16.0, 26.7) - 0.065 * _lobe(501.1, 20.4, 26.2),
+                 0.821 * _lobe(568.8, 46.9, 40.5) + 0.286 * _lobe(530.9, 16.3, 31.1),
+                 1.217 * _lobe(437.0, 11.8, 36.0) + 0.681 * _lobe(459.0, 26.0, 13.8)])
+_XYZ2RGB = np.array([[3.2406, -1.5372, -0.4986], [-0.9689, 1.8758, 0.0415], [0.0557, -0.2040, 1.0570]])
+WCH = (_XYZ2RGB @ _CMF) / (LAM ** 5 * (np.exp(1.4388e7 / (LAM * 5778.0)) - 1))
+WCH /= WCH.sum(1, keepdims=True)                     # sRGB weights of sunlight per wavelength (signed; the sun sums to 1,1,1)
+BO_L = np.interp(LAM, np.arange(360.0, 741.0, 10.0), _O3) * 5.37e21       # per km at the peak (5.37e18 /m³)
+BR_L = 33.1e-3 * (440.0 / LAM) ** 4 * a.air                               # same λ^-4 law as BR
+def twi_w(mu):
+    """0 with the sun more than 10° up (the daylight model is kept as it was), 1 below 6°"""
+    u = np.clip((np.sin(np.radians(10)) - np.asarray(mu, float)) / (np.sin(np.radians(10)) - np.sin(np.radians(6))), 0, 1)
+    return u * u * (3 - 2 * u)
+BO_T = np.maximum(WCH @ BO_L, 0)                                           # band averages, (2.46, 1.79, 0) e-3 /km
+BO_V = BO + (BO_T - BO) * twi_w(math.sin(SUN_EL)) if PHYS else BO           # view rays: band averages at twilight
 FOG, FOG_Z, FOG_H = a.mist, BASE + 0.05, 0.06
 
 def airmass(cz):
@@ -353,16 +395,25 @@ def _build_sun_lut():
     trap = lambda f: np.sum((f[..., 1:] + f[..., :-1]) * 0.5 * ds, 2)
     odR, odM = trap(np.exp(-alt / HR)), trap(np.exp(-alt / HM))
     odO = trap(np.clip(1 - np.abs(alt - 25) / 15, 0, 1))
-    T = np.exp(-(BR * odR[..., None] + BMe * a.haze * odM[..., None] + BO * odO[..., None]))
+    T0 = np.exp(-(BR * odR[..., None] + BMe * a.haze * odM[..., None] + BO * odO[..., None]))
+    # twilight: per wavelength, then summed over each channel's band. Channels 3-5 weight the sum by the Rayleigh
+    # coefficient (relative to BR), because a grazing path leaves only the long end of each band and air scatters
+    # that end less than the channel's nominal wavelength would.
+    Tl = np.exp(-(BR_L * odR[..., None] + BMe[0] * a.haze * odM[..., None] + BO_L * odO[..., None]))
+    T1, T1R = Tl @ WCH.T, (Tl * BR_L) @ WCH.T / BR
+    w = twi_w(LUT_MU)[None, :, None]
+    lg = lambda x: np.log(np.maximum(x, 1e-37))
+    T = np.exp((1 - w) * lg(T0) + w * lg(T1)); TR = np.exp((1 - w) * lg(T0) + w * lg(T1R))
     mu_h = -np.sqrt(np.maximum(1 - RP ** 2 / (RP + LUT_H) ** 2, 0))[:, None]
     f = np.clip((LUT_MU[None] - mu_h) / 0.0094 + 0.5, 0, 1); f = f * f * (3 - 2 * f)       # sun disc sinking
-    return (T * f[..., None]).astype(np.float32)
-if PHYS: SUN_LUT = _build_sun_lut()
-def sun_T_lut(alt, mu_s):
+    return np.concatenate([T * f[..., None], TR * f[..., None]], -1).astype(np.float32)
+if PHYS: SUN_LUT = _cached("sunlut", [a.haze, a.air, "twilight-3"], _build_sun_lut)
+def sun_T_lut(alt, mu_s, ray=False):
+    """sunlight transmittance to (alt, sun cosine); ray=True also returns the Rayleigh-weighted one (6 channels)"""
     ia = np.clip(alt / (LUT_H[1] - LUT_H[0]), 0, len(LUT_H) - 1)
     im = np.clip((mu_s - LUT_MU[0]) / (LUT_MU[1] - LUT_MU[0]), 0, len(LUT_MU) - 1)
     return np.stack([map_coordinates(SUN_LUT[..., c], [ia.ravel(), im.ravel()], order=1, mode="nearest").reshape(np.shape(alt))
-                     for c in range(3)], -1)
+                     for c in range(6 if ray else 3)], -1)
 def sun_T(alt):
     if PHYS: return sun_T_lut(np.asarray(alt, float), np.full(np.shape(alt), math.sin(SUN_EL)))
     return sun_T_classic(alt)
@@ -403,21 +454,21 @@ def atmosphere(dirs, tmax, n=28, O=None, light=None):
     odR = np.cumsum(rhoR * dt, 1); odM = np.cumsum(rhoM * dt, 1)
     if PHYS:
         odO = np.cumsum(np.clip(1 - np.abs(alt - 25) / 15, 0, 1) * dt, 1)
-        Tv = np.exp(-(BR[None, None] * odR[..., None] + BMe[None, None] * odM[..., None] + BO[None, None] * odO[..., None]))
+        Tv = np.exp(-(BR[None, None] * odR[..., None] + BMe[None, None] * odM[..., None] + BO_V[None, None] * odO[..., None]))
         mu_s = (px * LD[0] + py * LD[1] + pz * LD[2]) / rad
-        Ts = sun_T_lut(alt, mu_s)
+        Ts = sun_T_lut(alt, mu_s, ray=True); TsR = Ts[..., 3:]; Ts = Ts[..., :3]
     else:
         Tv = np.exp(-(BR[None, None] * odR[..., None] + BMe[None, None] * odM[..., None]))
-        Ts = sun_T_classic(alt)
-    scat = (BR * ph_r(mu)[:, None])[:, None] * rhoR[..., None] + (BM * ph_m(mu)[:, None])[:, None] * (rhoM - rhoF)[..., None] \
+        Ts = TsR = sun_T_classic(alt)
+    scat = (BM * ph_m(mu)[:, None])[:, None] * (rhoM - rhoF)[..., None] \
          + (BM * (0.35 * ph_m(mu) + 0.65 * 0.25 / np.pi)[:, None])[:, None] * rhoF[..., None] * 1.6
-    Lin = np.sum(Tv * Ts * scat * dt[..., None], 1) * LI
+    Lin = np.sum(Tv * (Ts * scat + TsR * (BR * ph_r(mu)[:, None])[:, None] * rhoR[..., None]) * dt[..., None], 1) * LI
     if light is not None:                                                  # moon: scattering only
-        ms = (BR[None, None] * rhoR[..., None] + BM[None, None] * rhoM[..., None]) * MS_SRC(alt, mu_s) * (LI / SUN_I)
+        ms = (BR[None, None] * rhoR[..., None] + BM[None, None] * rhoM[..., None]) * MS_SRC(alt, mu_s, Ts) * (LI / SUN_I)
         return (Lin + np.sum(Tv * ms * dt[..., None], 1)) * light[2], Tv[:, -1]
     if PHYS:
         # crude multiple scattering: an isotropic source proportional to the local sunlit sky brightness
-        ms = (BR[None, None] * rhoR[..., None] + BM[None, None] * rhoM[..., None]) * MS_SRC(alt, mu_s)
+        ms = (BR[None, None] * rhoR[..., None] + BM[None, None] * rhoM[..., None]) * MS_SRC(alt, mu_s, Ts)
         Lin = Lin + np.sum(Tv * ms * dt[..., None], 1) + NIGHT_SKY * (1 - Tv[:, -1])
     if MOON_ON:
         Lin = Lin + atmosphere(dirs, tmax, n, O, light=(MOON, MOON_I, MOON_TINT))[0]
@@ -429,12 +480,59 @@ def atmosphere(dirs, tmax, n=28, O=None, light=None):
 
 MOON_I = SUN_I * 1e-3 * (a.moon if a.moon is not None else 1.0)           # not physical (1/400000): tuned against NIGHT_SKY and city lights
 
-def MS_SRC(alt, mu_s):
-    """isotropic multiple-scattering source (radiance units / km), fitted by eye to keep twilight skies from going black"""
-    day = sun_T_lut(alt, mu_s) * np.array([0.8, 0.95, 1.15])
-    u = np.clip((mu_s + 0.20) / 0.24, 0, 1); u = u * u * (3 - 2 * u)      # sunlit sky overhead lasts until ~ -11 deg
+def MS_FIT(alt, mu_s, Ts=None):
+    """the earlier multiple-scattering source, fitted by eye to daylight; kept for high sun (see MS_SRC)"""
+    day = (sun_T_lut(alt, mu_s) if Ts is None else Ts) * np.array([0.8, 0.95, 1.15])
+    u = np.clip((mu_s + 0.20) / 0.24, 0, 1); u = u * u * (3 - 2 * u)
     twi = (u * np.exp(-alt / 8.0))[..., None] * np.array([0.30, 0.50, 1.0]) * 0.30
     return (day + twi) * SUN_I * 0.02
+
+MS_H = np.linspace(0, RA - RP, 31); MS_MU = np.linspace(-0.5, 1.0, 121)
+def _build_ms_lut(nd=64, ns=40, albedo=0.2):
+    """multiple scattering after Hillaire (2020): at each altitude and sun cosine, the light that has scattered once
+    and arrives from every direction (plus the lit ground), scattered isotropically, times 1/(1 - f_ms) for all higher
+    orders. Points in the Earth's shadow are lit this way by the sunlit air above them, which is what keeps blue hour
+    blue. Returns radiance per unit sun irradiance, (len(MS_H), len(MS_MU), 3)."""
+    k = np.arange(nd) + 0.5; zc = 1 - 2 * k / nd; ph = np.pi * (1 + 5 ** 0.5) * k
+    om = np.stack([np.sqrt(1 - zc ** 2) * np.cos(ph), np.sqrt(1 - zc ** 2) * np.sin(ph), zc], 1)
+    u = (np.arange(ns) + 0.5) / ns
+    s_x, s_z = np.sqrt(1 - MS_MU ** 2), MS_MU
+    out = np.zeros((len(MS_H), len(MS_MU), 3))
+    for ih, h in enumerate(MS_H):
+        r = RP + h; mv = om[:, 2]
+        dg = r * r * (mv * mv - 1) + RP * RP; gnd = (mv < 0) & (dg >= 0)
+        tend = np.where(gnd, -r * mv - np.sqrt(np.maximum(dg, 0)), -r * mv + np.sqrt(r * r * (mv * mv - 1) + RA * RA))
+        ts = tend[:, None] * u[None] ** 2; dt = tend[:, None] * (2 * u / ns)[None]      # quadratic spacing
+        px, pz = ts * om[:, 0:1], r + ts * om[:, 2:3]; py = ts * om[:, 1:2]
+        rad = np.sqrt(px * px + py * py + pz * pz); alt = np.maximum(rad - RP, 0)
+        rR, rM, rO = np.exp(-alt / HR), np.exp(-alt / HM) * a.haze, np.clip(1 - np.abs(alt - 25) / 15, 0, 1)
+        sig_s = BR * rR[..., None] + BM * rM[..., None]; sR, sM = BR * rR[..., None], BM * rM[..., None]
+        ext = (BR * rR[..., None] + BMe * rM[..., None] + BO_T * rO[..., None]) * dt[..., None]
+        Tp = np.exp(-(np.cumsum(ext, 1) - 0.5 * ext))                                   # camera-to-sample, midpoint
+        f_ms = np.mean(np.sum(Tp * sig_s * dt[..., None], 1), 0)                        # isotropic transfer
+        mu_p = (px[None] * s_x[:, None, None] + pz[None] * s_z[:, None, None]) / rad[None]   # (nmu, nd, ns)
+        Ts = sun_T_lut(np.broadcast_to(alt, mu_p.shape), mu_p, ray=True)
+        L = np.sum(Tp[None] * (sM[None] * Ts[..., :3] + sR[None] * Ts[..., 3:]) * dt[None, ..., None], 2) / (4 * np.pi)
+        # the ground seen along directions that hit it: Lambertian, lit by the sun if it is up there
+        ge = np.where(gnd)[0]
+        if len(ge):
+            pe = np.stack([tend[ge] * om[ge, 0], tend[ge] * om[ge, 1], r + tend[ge] * om[ge, 2]], 1)
+            mu_g = (pe[None, :, 0] * s_x[:, None] + pe[None, :, 2] * s_z[:, None]) / RP
+            Tg = np.exp(-np.sum(ext[ge], 1))
+            L[:, ge] += Tg[None] * sun_T_lut(np.zeros(mu_g.shape), mu_g) * (albedo / np.pi * np.maximum(mu_g, 0))[..., None]
+        out[ih] = L.mean(1) / (1 - f_ms)
+    return out.astype(np.float32)
+if PHYS: MS_LUT = _cached("mslut", [a.haze, a.air, "hillaire-3"], _build_ms_lut)
+
+def MS_SRC(alt, mu_s, Ts=None):
+    """isotropic multiple-scattering source (radiance units / km) from the Hillaire LUT.
+    Ts is accepted for the old call signature and not needed."""
+    ia = np.clip(np.asarray(alt, float) / (MS_H[1] - MS_H[0]), 0, len(MS_H) - 1)
+    im = np.clip((np.asarray(mu_s, float) - MS_MU[0]) / (MS_MU[1] - MS_MU[0]), 0, len(MS_MU) - 1)
+    ms = np.stack([map_coordinates(MS_LUT[..., c], [ia.ravel(), im.ravel()], order=1, mode="nearest").reshape(np.shape(alt))
+                   for c in range(3)], -1) * SUN_I
+    w = twi_w(mu_s)[..., None]
+    return ms if np.all(w == 1) else w * ms + (1 - w) * MS_FIT(alt, mu_s, Ts)
 
 # ------------------------------------------------------------------ lenticular cloud
 CL_C = np.array([0.0, 0.3, PEAK + 0.4]); CL_R = np.array([0.7, 0.58, 0.12]) * max(REL, 1.5) + np.array([0, 0, 0.1])
@@ -510,6 +608,11 @@ def march(O, dirs, t0=0.05, iters=900, tfar=220.0):
         mv = ~h_ & ~gone; prev[ia[mv]] = t[ia[mv]]
         t[ia[mv]] += np.maximum(dh[mv] * 0.45, 0.004 + 0.0022 * t[ia[mv]])
     hi_ = np.where(hit)[0]; lo, hi = prev[hi_].copy(), t[hi_].copy()
+    for _ in range(12):                    # near ground (< 1 km) at a grazing angle: a hit is flagged up to 0.4 m above
+        p = (O if single else O[hi_]) + dirs[hi_] * hi[:, None]     # the surface, so walk on until below it, then bisect
+        ab = (p[:, 2] - terrain_z(p[:, 0], p[:, 1]) > 0) & (hi < 1.0)
+        if not ab.any(): break
+        lo = np.where(ab, hi, lo); hi = np.where(ab, hi + 0.001 + 0.0006 * hi, hi)
     for _ in range(8):
         mid = (lo + hi) / 2; p = (O if single else O[hi_]) + dirs[hi_] * mid[:, None]
         below = p[:, 2] - terrain_z(p[:, 0], p[:, 1]) < 0; hi = np.where(below, mid, hi); lo = np.where(below, lo, mid)
@@ -734,7 +837,7 @@ def render_rows(r0, r1):
     gfile = os.path.join(GEOM_DIR, f"{r0:05d}_{r1:05d}.npz") if GEOM_DIR else None
     G_ = dict(np.load(gfile)) if gfile and os.path.exists(gfile) else None
     if G_ is not None: t, hit = G_["t"], G_["hit"]
-    else: t, hit = march(CAM[None], dirs)
+    else: t, hit = march(CAM[None], dirs, t0=min(0.05, 2 * a.cam_height))   # a low camera sees ground nearer than 50 m
     rng = np.random.default_rng(1000 + r0)
     t_geom = t.copy()
     img = np.zeros((N, 3))
@@ -788,8 +891,11 @@ def render_rows(r0, r1):
         tmax[ids] = np.where(cov > 0.5, ti, tmax[ids])
         if star is not None: star[ids] *= (1 - cov[:, None])
     if a.cloud:
-        cc, ct = march_cloud(dirs, tmax); Lc, Tc = atmosphere(dirs, np.minimum(tmax, np.linalg.norm(CL_C - CAM)))
-        img = Lc + Tc * cc + ct[:, None] * (img - Lc)
+        cc, ct = march_cloud(dirs, tmax)
+        ci_ = np.where((ct < 1) | (cc.max(1) > 0))[0]                     # only rays that touch the cloud change
+        if len(ci_):
+            Lc, Tc = atmosphere(dirs[ci_], np.minimum(tmax[ci_], np.linalg.norm(CL_C - CAM)))
+            img[ci_] = Lc + Tc * cc[ci_] + ct[ci_, None] * (img[ci_] - Lc)
         if star is not None: star *= ct[:, None]
     if CLOUD_LAYER_ON:
         img = apply_cloud_layer(dirs, tmax, img, extra=star)
@@ -815,7 +921,7 @@ def stars(d):
 
 def camera_info():
     return dict(W=W, H=H, fl=fl, cam=CAM.tolist(), fwd=fwd.tolist(), right=right.tolist(), up=up.tolist(),
-                peak_dist=float(np.hypot(*CAM[:2])), aperture_mm=a.aperture, night=bool(NIGHT),
+                peak_dist=float(np.hypot(*CAM[:2])), aperture_mm=a.aperture, night=bool(NIGHT), sun_el=a.sun_el, sky=a.sky,
                 focus_km=a.focus if a.focus is not None else float(np.hypot(*(CAM[:2] - tgt_xy))))
 
 def band_coverage():

@@ -21,6 +21,9 @@ ap.add_argument("--light-gain", type=float, default=1.0, help="scale city light 
 ap.add_argument("--bokeh-rim", type=float, default=0.25, help="brighter bokeh edge (0 = flat discs)")
 ap.add_argument("--aperture", type=float, default=None, help="override the render's lens aperture, mm (0 = pinhole); DOF and bokeh are post effects")
 ap.add_argument("--focus", type=float, default=None, help="override the focus distance, km")
+ap.add_argument("--wb", default="auto", help="white balance in kelvin ('auto': 4800 K at blue hour, the setting blue-hour "
+                "photographers use, else the sun as white; 'sun' = never shift)")
+ap.add_argument("--sat", type=float, default=None, help="saturation (default 1; 1.15 at blue hour, like a camera's standard picture style)")
 a = ap.parse_args()
 
 if a.hdr_in:
@@ -100,6 +103,18 @@ if cam and cam.get("aperture_mm", 0) > 0 and depth is not None and not a.no_dof:
     img = out
 
 night = bool(cam and cam.get("night"))
+# blue hour (physical sky, sun 1 deg above to 3 deg below the horizon and lower, not --time night): the exposure keys on
+# the sky and the far mountains instead of the whole frame, so a city or a dark foreground doesn't set it
+tw = 0.0
+if cam and cam.get("sky") == "physical" and cam.get("sun_el") is not None and not night:
+    tw = float(np.clip((1.0 - cam["sun_el"]) / 3.0, 0, 1))
+def _log_key(v):
+    return math.exp(float(np.mean(np.log(v @ np.array([0.2126, 0.7152, 0.0722]) + 1e-4))))
+key_img = _log_key(img)
+if tw > 0:
+    far = (depth > 30) if depth is not None else (np.arange(H) < H // 3)[:, None] & np.ones((1, W), bool)
+    if far.sum() > 0.05 * H * W:
+        key_img = key_img ** (1 - tw) * _log_key(img[far]) ** tw
 if night:
     # moonlight is dim to the eye: pull the scene (not the city lights added below) toward a cool grey, the scotopic look
     lum = (img @ np.array([0.2126, 0.7152, 0.0722]))[..., None]
@@ -139,13 +154,29 @@ if os.path.exists(lf) and not a.no_lights:
     glow = gaussian_filter(hl, (H / 400, H / 400, 0)) * 0.5 + gaussian_filter(hl, (H / 90, H / 90, 0)) * 0.35 + gaussian_filter(hl, (H / 25, H / 25, 0)) * 0.15
     img = img + layer_all + glow
 
+# white balance: a camera set below the sun's colour temperature renders dusk a deeper blue and sodium lamps orange
+def _rgb_of(T):
+    lam = np.arange(380.0, 731.0, 5.0); g = lambda m, s1, s2: np.exp(-0.5 * ((lam - m) / np.where(lam < m, s1, s2)) ** 2)
+    xyz = np.stack([1.056 * g(599.8, 37.9, 31.0) + 0.362 * g(442.0, 16.0, 26.7) - 0.065 * g(501.1, 20.4, 26.2),
+                    0.821 * g(568.8, 46.9, 40.5) + 0.286 * g(530.9, 16.3, 31.1), 1.217 * g(437.0, 11.8, 36.0) + 0.681 * g(459.0, 26.0, 13.8)])
+    rgb = np.array([[3.2406, -1.5372, -0.4986], [-0.9689, 1.8758, 0.0415], [0.0557, -0.2040, 1.0570]]) @ (xyz @ (1 / (lam ** 5 * (np.exp(1.4388e7 / (lam * T)) - 1))))
+    return rgb / (rgb @ np.array([0.2126, 0.7152, 0.0722]))
+wbk = None if a.wb == "sun" else (4800.0 if tw > 0 else None) if a.wb == "auto" else float(a.wb)
+if wbk is not None:
+    m = _rgb_of(5778.0) / _rgb_of(wbk)
+    m = 1 + (m / (m @ np.array([0.2126, 0.7152, 0.0722])) - 1) * (tw if a.wb == "auto" else 1.0)
+    img = img * m
+    print(f"white balance {wbk:.0f} K: x{np.round(m, 3)}")
+sat = a.sat if a.sat is not None else 1 + 0.15 * tw
+if sat != 1:
+    lum = (img @ np.array([0.2126, 0.7152, 0.0722]))[..., None]; img = np.maximum(lum + (img - lum) * sat, 0)
 stars = load_aux("stars")                                 # night: point stars, added after bloom
 if a.save_hdr: np.save(a.save_hdr, (img if stars is None else img + stars).astype(np.float32))
 if a.exposure is None:
     a.exposure = "auto*0.25" if night else "0.8"
 if a.exposure.startswith("auto"):
-    lum = img @ np.array([0.2126, 0.7152, 0.0722])
-    key = math.exp(float(np.mean(np.log(lum + 1e-4))))
+    # blue hour: keyed on the sky and far terrain before the lights were added; otherwise the whole frame
+    key = key_img if tw > 0 else _log_key(img)
     ex = 0.30 / key * (float(a.exposure.split("*")[1]) if "*" in a.exposure else 1.0)
     print(f"auto exposure {ex:.3f} (key {key:.4f})")
 else:

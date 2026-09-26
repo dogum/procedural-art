@@ -13,12 +13,12 @@ Four tools, numpy/scipy/pillow only, that push how close pure math gets to a pho
 
 | Tool | Best at | Time on 1 CPU |
 |---|---|---|
-| `scripts/pbr_terrain.py` (+ `post_terrain.py`) | Real mountains from real elevation data: atmosphere, golden light, shadows, snow, mist, clouds; optional lake reflections, trees and villages, blue hour with city lights, moonlit night | 7 s at 600×200 · ~2.5 min at 3000×1000 plain · 6–12 min with water, trees or a city |
-| `scripts/timelapse.py` | Sun-angle video (golden hour to night) along the real solar path for a date and place | ~1 min per 1200×400 keyframe; 40 keyframes ≈ 40 min |
+| `scripts/pbr_terrain.py` (+ `post_terrain.py`) | Real mountains from real elevation data: atmosphere, golden light, shadows, snow, mist, clouds; optional lake reflections, trees and villages, blue hour with city lights along real streets (OpenStreetMap), moonlit night | 7 s at 600×200 · ~2.5 min at 3000×1000 plain · 5–13 min with water, trees or a city |
+| `scripts/timelapse.py` | Sun-angle video (golden hour to night) along the real solar path for a date and place, every frame rendered so shadows slide | ~15 s per 600×200 frame, ~50 s at 1200×400; a 20 s clip (480 frames) ≈ 6 h at 1200×400 |
 | `scripts/pathtracer.py` (+ `post_pathtrace.py`) | Tabletop scenes from a JSON file: glass, liquids, metal, glossy fruit, soft or hard light, caustics (photon map), rainbow dispersion, depth of field | ~3 s per pass at 900×300; 30–70 s per pass at 2400×800; 60–80 adaptive spp (about an hour) for a clean final |
 | `scripts/paint.py` | Any image (a render from above, or a photo the user uploads) as oil, impasto, gouache, watercolour or ink | 10–60 s at 3000×1000 |
 
-Requirements: Python 3 with numpy, scipy and pillow; ffmpeg for timelapses. The terrain renderer needs network access to AWS Terrain Tiles for elevation data.
+Requirements: Python 3 with numpy, scipy and pillow; ffmpeg for timelapses. The terrain renderer needs network access to AWS Terrain Tiles for elevation data, and with `--city` to the OpenStreetMap Overpass API for streets (`scripts/osm_roads.py`; cached in `--work/osm`, with a synthetic street grid when it can't be reached).
 
 Work in a writable folder (for example the session's outputs folder) and call the scripts by path: the installed skill folder may be read-only, and every script writes only to `--work`, `--out` and the current folder. In the commands below `SK` is this skill's folder (the one containing this file) and `S=$SK/scripts`.
 
@@ -51,8 +51,8 @@ python $S/post_terrain.py --bands work/ararat/bands_3000x1000 --out final.png
 All off by default. Full flag list, recipes for every showcase, tuning notes and the pitfalls of each feature: `references/terrain_features.md` (read it before using any of these).
 
 - **Water:** `--water-level auto` turns a lake near the camera into water that reflects terrain, sky and cloud; `--waves 0.1` is a calm morning mirror. Stand on the water: `--cam-offset 0 --cam-height 0.004 --horizon 0.5`. `auto` only accepts a basin that is level in the elevation data; on a dry plain it prints why and renders without water. For a lake it can't find, or the sea, give `--water-level <metres> --water-seed lat,lon`.
-- **Near field:** `--trees 0.8 --villages 0.6 --near-km 5` adds trees, poplar rows and houses with pitched roofs, reflected in water. They only read with a low camera (`--cam-height 0.03` or less). `--biome temperate --treeline 2400` for green mountains.
-- **Twilight and night:** `--time blue` or `--sun-el -4` switches to the physical sky (Earth shadow, Belt of Venus, alpenglow). `--city 0.8` lights a city; post with `--exposure "auto*0.45"`. `--near-lamps 16 --aperture 40` adds out-of-focus lamps. `--time night` gives a moonlit night with point stars, and post picks a night exposure by itself; `--moon 0` is starlight only. A city reads best at blue hour; under `--time night` it dominates the frame.
+- **Near field:** `--trees 0.8 --villages 0.6 --near-km 5` adds trees, orchard and poplar rows, houses with pitched roofs, and field walls and fences, reflected in water. They only read with a low camera (`--cam-height 0.03` or less). Standing in a field (`--cam-height 0.003`), trees and houses from about 40 m hold up at 3000 px; add `--sky physical` and post with `--exposure 0.6`. `--biome temperate --treeline 2400` for green mountains.
+- **Twilight and night:** `--time blue` or `--sun-el -4` switches to the physical sky (Earth shadow, Belt of Venus, alpenglow). `--city 0.8` lights a city along its real streets from OpenStreetMap: lamps by road class (white LED on avenues, orange sodium on side streets), car light streaks (`--traffic`, `--shutter`), lit windows in the buildings that front a street, dark parks and fields. Road data © OpenStreetMap contributors (ODbL). The first run fetches the roads; public Overpass mirrors can take several minutes for a city, and `--streets grid` skips them. Post with `--exposure "auto*0.3"`: at blue hour post keys the exposure on the sky and sets the white balance to 4800 K. `--near-lamps 16 --aperture 40` adds out-of-focus lamps. `--time night` gives a moonlit night with point stars, and post picks a night exposure by itself; `--moon 0` is starlight only. A city reads best at blue hour; under `--time night` it dominates the frame.
 - **Clouds:** `--cloud-model ms` gives the lenticular multiple scattering and a silver lining.
 
 Fuji mirrored in Lake Kawaguchi, the recipe of the showcase final (water makes a view about 4× slower than a dry one; the 3000×1000 final with trees took 12 min):
@@ -65,10 +65,10 @@ python $S/pbr_terrain.py $FUJI --size 900x300 && \
 python $S/post_terrain.py --bands work/fuji/bands_900x300 --out fuji_lake_draft.png
 ```
 
-Sunset timelapse over Yerevan (real sun path for 20 April, 18:40–20:40 local; everything after `--` goes to `pbr_terrain.py`; rerun to resume; changed settings get fresh keyframe folders instead of reusing old ones):
+Sunset timelapse over Yerevan (real sun path for 20 April, 18:40–20:40 local, 20 s at 24 fps; every frame is rendered at its own sun position, so shadows slide; everything after `--` goes to `pbr_terrain.py`; rerun to resume). Draft a few seconds at 600×200 first (`--start 19:26 --end 19:56 --frames 121` covers sunset):
 
 ```bash
-python $S/timelapse.py --work work/tl --out ararat_sunset.mp4 --keyframes 40 --interp 4 --size 1200x400 \
+python $S/timelapse.py --work work/tl --out ararat_sunset.mp4 --frames 480 --size 1200x400 \
   --date 2026-04-20 --utc-offset 4 --start 18:40 --end 20:40 -- \
   --peak 39.7019,44.2986 --from 40.1963,44.5238 --second 39.6517,44.4011 --cam-offset 0 --cam-height 0.05 \
   --hfov 34 --air 0.8 --city 0.8 --trees 0.5 --near-km 8 --near-lamps 16 --aperture 40
@@ -128,11 +128,11 @@ python $S/paint_compare.py --out sheet.jpg --width 1800 --item final.png "render
 - **Coincident surfaces:** a glass base exactly on the table (both at y = 0) loses the light under it. Lift glass objects 0.02 cm.
 - **Where caustics land:** a low light throws caustics far from the object (about height / tan(elevation)); they are easily hidden behind the next object. Check with a top view before the final.
 - **Memory:** rays are processed in chunks (path tracer 200k by default, `--chunk`); the terrain mirror pass is chunked too. Keep chunking if you add geometry.
-- **Time limits:** everything is resumable (row bands, sample accumulators, timelapse keyframes). Background jobs may die when a shell call returns; run chunks in the foreground, or use `pathtracer.py --time` so a run stops cleanly before the shell limit.
+- **Time limits:** everything is resumable (row bands, sample accumulators, timelapse frames). Background jobs may die when a shell call returns; run chunks in the foreground, or use `pathtracer.py --time` so a run stops cleanly before the shell limit.
 - **Showing results:** after writing output files, always present them. A file that is never presented can't be opened on mobile.
 
 ## Honest limits (tell the user)
 
-Light, atmosphere, water reflections, glass, metal and real terrain at a distance are convincing. Close trees and houses look like a good game engine, cities are boxes that only work at blue hour or night, and water and timelapse shadows don't move. The path tracer lacks tori and rounded boxes, and paintings keep detail down to about 2 px only where the source draws it cleanly (a noisy render's speckled highlight becomes one soft shape). On one CPU core a 3000×1000 terrain frame with water and trees takes about 12 minutes and a clean glass still life about an hour. `references/lessons.md` has the full list of limits, what each technique buys and the mistakes worth not repeating.
+Light, atmosphere, water reflections, glass, metal and real terrain at a distance are convincing. Trees and houses hold up from about 60 m out even with the camera standing in a field, but the nearest big crowns still look rendered on close inspection; cities follow real streets but their buildings are boxes, so they only work at blue hour or night, and water doesn't move. A timelapse renders every frame, so a 20 s clip takes hours. The path tracer lacks tori and rounded boxes, and paintings keep detail down to about 2 px only where the source draws it cleanly (a noisy render's speckled highlight becomes one soft shape). On one CPU core a 3000×1000 terrain frame with water and trees takes about 13 minutes and a clean glass still life about an hour. `references/lessons.md` has the full list of limits, what each technique buys and the mistakes worth not repeating.
 
 `scripts/dem.py` (elevation download and loading with void filling) is shared with procedural-terrain-art; both skills ship an identical copy. Change both or neither.
