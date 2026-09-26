@@ -268,14 +268,18 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
           <div class="frame"><img id="reArarat" src="media/re_ararat.jpg" alt="Photographic render of Ararat at golden hour with haze and a lenticular cloud" width="1800" height="600" loading="lazy"></div>
           <figcaption><span>Ararat from the plain · golden hour, sun placed to light the faces the camera sees</span><a class="save" data-save="reArarat" href="#" download>Save image</a></figcaption>
         </figure>
+        <figure>
+          <div class="frame"><img id="reVillage" src="media/re_village.jpg" alt="A dirt lane past a stone-walled house, orchards and poplar rows, with Ararat and Little Ararat behind" width="1800" height="600" loading="lazy"></div>
+          <figcaption><span>A village lane on the Ararat plain · camera 3 m up, house 60 m away · <code>--trees 0.8 --villages 0.7 --cam-height 0.003</code></span><a class="save" data-save="reVillage" href="#" download>Save image</a></figcaption>
+        </figure>
         <div class="pair">
           <figure>
             <div class="frame"><img id="reOrch" src="media/re_orchards.jpg" alt="Ararat behind orchards, poplar rows and villages" width="1800" height="600" loading="lazy"></div>
             <figcaption><span>Orchards and villages · <code>--trees 0.8 --villages 0.7</code></span><a class="save" data-save="reOrch" href="#" download>Save</a></figcaption>
           </figure>
           <figure>
-            <div class="frame"><img id="reBlue" src="media/re_bluehour.jpg" alt="Ararat at blue hour over the lights of Yerevan with out-of-focus lamps" width="1800" height="600" loading="lazy"></div>
-            <figcaption><span>Yerevan at blue hour · <code>--city 0.8 --aperture 40</code></span><a class="save" data-save="reBlue" href="#" download>Save</a></figcaption>
+            <div class="frame"><img id="reBlue" src="media/re_bluehour.jpg" alt="Ararat as a dark silhouette at blue hour above the street lights of Yerevan" width="1800" height="600" loading="lazy"></div>
+            <figcaption><span>Yerevan at blue hour · lamps on the real streets (© OpenStreetMap contributors) · <code>--sun-el -5 --city 0.8</code></span><a class="save" data-save="reBlue" href="#" download>Save</a></figcaption>
           </figure>
         </div>
         <figure>
@@ -460,7 +464,7 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
     </section>
   </main>
 
-  <footer><span>Elevation: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a> (<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">sources and attribution</a>). Rendering: numpy, Canvas 2D.</span><span><a href="https://github.com/dogum/procedural-art">github.com/dogum/procedural-art</a> · Apache-2.0</span></footer>
+  <footer><span>Elevation: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a> (<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">sources and attribution</a>). Streets for the city lights: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. Rendering: numpy, Canvas 2D.</span><span><a href="https://github.com/dogum/procedural-art">github.com/dogum/procedural-art</a> · Apache-2.0</span></footer>
 </div>
 
 <script>

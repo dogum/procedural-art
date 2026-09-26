@@ -79,14 +79,14 @@ The first engine treated every mountain like Ararat, and the Matterhorn drowned 
 
 ## Toward a photograph
 
-The same elevation, ray-marched through a physical atmosphere: Rayleigh and Mie scattering, soft terrain shadows, valley mist, a lenticular cloud with multiple scattering. Lakes reflect the terrain with Fresnel and ripple normals. Trees, villages and city lights are placed near the camera.
+The same elevation, ray-marched through a physical atmosphere: Rayleigh and Mie scattering, soft terrain shadows, valley mist, a lenticular cloud with multiple scattering. Lakes reflect the terrain with Fresnel and ripple normals. Trees, villages, stone walls and fields are placed near the camera, and a city at dusk is lit along its real OpenStreetMap streets.
 
 <img src="docs/media/re_fuji.jpg" alt="Photographic render of Mount Fuji reflected in Lake Kawaguchi">
 
 <table>
 <tr>
-<td width="50%"><img src="docs/media/re_bluehour.jpg" alt="Ararat at blue hour over the lights of Yerevan"><br>Blue hour over Yerevan, with lens bokeh</td>
-<td width="50%"><img src="docs/media/re_orchards.jpg" alt="Ararat behind orchards and villages"><br>Orchards, poplars and villages</td>
+<td width="50%"><img src="docs/media/re_bluehour.jpg" alt="Ararat as a dark silhouette at blue hour above the street lights of Yerevan"><br>Blue hour over Yerevan, lamps on the real streets</td>
+<td width="50%"><img src="docs/media/re_village.jpg" alt="A dirt lane past a stone-walled house and orchards, Ararat behind"><br>A village lane on the Ararat plain, camera 3 m up</td>
 </tr>
 </table>
 
@@ -142,7 +142,7 @@ cp -r procedural-art/skills/procedural-terrain-art procedural-art/skills/procedu
 pip install -r procedural-art/requirements.txt
 ```
 
-**Requirements:** Python 3 with numpy, scipy, pillow, matplotlib and contourpy (`requirements.txt`); ffmpeg for videos; network access to AWS Terrain Tiles for elevation (no key). Everything runs on CPU.
+**Requirements:** Python 3 with numpy, scipy, pillow, matplotlib and contourpy (`requirements.txt`); ffmpeg for videos; network access to AWS Terrain Tiles for elevation (no key), and for a city at night to the OpenStreetMap Overpass API (cached after the first run). Everything runs on CPU.
 
 ## Try these
 
@@ -194,13 +194,13 @@ One CPU core:
 | All six styles + contact sheet | ~40 s |
 | Studio page | ~5 s to build |
 | Photographic terrain, 3000 × 1000 | 3–12 min (resumable) |
-| Timelapse, 40 keyframes at 1200 × 400 | ~40 min (resumable) |
+| Timelapse, 20 s at 1200 × 400, every frame rendered | ~6 hours (resumable; `--blend 2` halves it) |
 | Clean still life, 2400 × 800 | ~1 hour (resumable) |
 | Painting, 3000 × 1000 | 10–60 s |
 
 ## Limits
 
-What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees and houses look game-like closer than about 300 m; city lights are boxes and window grids at 1:1; timelapse in-betweens cross-fade shadows instead of sliding them; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. The skills say so when a request lands there.
+What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. The skills say so when a request lands there.
 
 ## Repository layout
 
@@ -230,7 +230,7 @@ Pictures welcome. See [CONTRIBUTING.md](CONTRIBUTING.md): change a skill, render
 
 ## Credits
 
-Elevation data: [Terrain Tiles on AWS](https://registry.opendata.aws/terrain-tiles/) (SRTM, GMTED, ETOPO1 and other public sources; see the [attribution list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)). Summit and viewpoint coordinates were looked up from public sources for each example. Built with Claude.
+Elevation data: [Terrain Tiles on AWS](https://registry.opendata.aws/terrain-tiles/) (SRTM, GMTED, ETOPO1 and other public sources; see the [attribution list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)). Street data for the city lights: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), available under the Open Database License. Summit and viewpoint coordinates were looked up from public sources for each example. Built with Claude.
 
 ## License
 

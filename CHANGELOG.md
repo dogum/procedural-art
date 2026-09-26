@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Versions follow [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### procedural-realism
+- Close foregrounds: trees get leaf clumps on branches, sky gaps, a visible trunk and limbs, self-shadowed crowns, backlit leaves and dappled shadows; detail appears only once it is large enough in pixels, so far trees look as before. Houses get tuff, plaster or board walls, tile, tin or slate roofs, framed windows, doors, chimneys, gutters and weathering. Dry-stone walls, hedges and fences run along field and yard edges with gates; fields have crop rows, grass, flowers and rutted lanes. A low camera 60 m from a house now reads as a village rather than a model. Fixed two old bugs that smeared everything within 50 m of a low camera.
+- Blue hour: below about 8° of sun the sky is computed per wavelength (ozone's Chappuis band) with a Hillaire multiple-scattering table, so the zenith is blue instead of lavender and twilight darkens at the measured rate. Daylight skies are unchanged.
+- Cities at dusk are lit along their real streets: new `scripts/osm_roads.py` fetches OpenStreetMap roads through the Overpass API (cached; the synthetic grid is the fallback, or `--streets grid`). Lamps by road class, buildings facing the street, dark parks and fields, `--traffic` for car light streaks. Post keys the blue-hour exposure on the sky and sets a 4800 K white balance (`--wb`, `--sat`).
+- Timelapse renders every frame at its own sun position, so shadows slide instead of cross-fading (`--frames`; `--blend K` renders every K-th frame). Exposure is smoothed over sun time, refraction tapers smoothly below the horizon, and the frames land on the blue-hour look. Faster frames with a warm `--geom-cache`.
+
 ## [1.1.0] - 2026-09-25
 
 ### Web app
