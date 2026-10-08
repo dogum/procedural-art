@@ -176,6 +176,8 @@ Each `SKILL.md` has the full workflow, and `references/` covers the engine, scen
 
 `build_studio.py` writes one HTML file (about 0.76 MB) with a 512 × 512 elevation grid inside. Orbit the mountain, move the light, change the ink, and save a 3000 × 1000 PNG. No server and no libraries; the only network request is for web fonts. Five are live on the site: [Ararat](https://dogum.github.io/procedural-art/studio/ararat.html), [Fuji](https://dogum.github.io/procedural-art/studio/fuji.html), [Matterhorn](https://dogum.github.io/procedural-art/studio/matterhorn.html), [Denali](https://dogum.github.io/procedural-art/studio/denali.html) and the [Grand Canyon](https://dogum.github.io/procedural-art/studio/grand-canyon.html). The same pages work as claude.ai artifacts, where the Save button uses the artifact download capability: see the [Ararat studio](https://claude.ai/artifact/2nyskwgoMR3ieJoZP3n1Dk) and the [showcase](https://claude.ai/artifact/XqYinY4hfHVU6PdxYz3548) on claude.ai.
 
+The Ararat studio is also on [Artifact Shelf](https://dogum.github.io/artifact-shelf/a/masis/), a gallery of my single-file HTML artifacts.
+
 ## How it works
 
 **Prints.** Elevation tiles become a grid aligned with the camera, rows running away from the viewer. Rows are projected near to far with a perspective camera, and a floating horizon per pixel column hides anything behind what's already drawn. A G-buffer records which row owns each pixel, so every style can sample height, shade and snow per pixel. Everything is normalised to a reference mountain, so a 1 km hill and an 8 km giant both fill the frame without retuning. [Engine notes](skills/procedural-terrain-art/references/engine.md).
