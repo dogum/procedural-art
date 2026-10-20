@@ -217,8 +217,17 @@ def road_field(bbox, origin, cache_dir, res=8.0, what=("roads",), log=print):
     """everything a renderer needs in one call: (data, segments, grid), cached as an .npz next to the tiles;
     None when OpenStreetMap is unreachable"""
     tag = f"{bbox[0]:.4f}_{bbox[1]:.4f}_{bbox[2]:.4f}_{bbox[3]:.4f}_{origin[0]:.5f}_{origin[1]:.5f}_{res:g}"
+    # a failed fetch is remembered: otherwise every timelapse frame waits minutes on the mirrors again, and a frame
+    # rendered after they recover would switch the city from the synthetic grid to the real streets mid-clip
+    miss = os.path.join(cache_dir, f"unavailable_{'+'.join(sorted(set(what) | {'roads'}))}_{tag}.txt")
+    if os.path.exists(miss):
+        log(f"OpenStreetMap was unreachable for this view earlier; using the synthetic streets (delete {miss} to try again)")
+        return None
     data = load_roads(bbox, cache_dir, what, log=log)
-    if data is None: return None
+    if data is None:
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(miss, "w") as fh: fh.write(f"every Overpass mirror failed at {time.strftime('%Y-%m-%d %H:%M')}\n")
+        return None
     seg = segments(data["roads"], origin)
     c = local_xy(np.array([[bbox[0], bbox[1]], [bbox[2], bbox[3]]]), origin)
     gf = os.path.join(cache_dir, f"roadgrid_{tag}.npz")

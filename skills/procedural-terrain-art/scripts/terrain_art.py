@@ -517,7 +517,8 @@ def font_for(text, serif=True):
         print("warning: no CJK font found (looked for Noto CJK, Hiragino, Yu Gothic, MS Gothic ...); "
               "Chinese/Japanese/Korean labels may render as boxes. Install fonts-noto-cjk or pass Latin labels.",
               file=sys.stderr, flush=True)
-    return font_manager.FontProperties(family="serif" if serif else "sans-serif")
+    # a list, not a string: matplotlib 3.11 parses a lone string as a fontconfig pattern, which rejects "sans-serif"
+    return font_manager.FontProperties(family=["serif" if serif else "sans-serif"])
 
 
 def figure(bg):

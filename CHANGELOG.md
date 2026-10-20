@@ -7,6 +7,14 @@ All notable changes to this project are documented here. Versions follow [semant
 ### Web app
 - A mountain picked from the OpenStreetMap suggestions gets its surveyed elevation (OSM `ele`) and native name: Photon search carries neither, so one Nominatim lookup by OSM id fills them in while the elevation tiles load. The label, caption and share link show the surveyed height instead of the elevation-data estimate. `ele` values in feet are converted.
 
+### procedural-terrain-art
+- Woodcut and riso print in solid ink at their edges. Where the woodcut block thins out (near foreground, the left fade, low slopes, water) it breaks into gouge-like strokes along the terrain rows instead of fading to grey; fading riso lines break into dashes of full ink instead of a pale tint. Same in the web app and studios.
+- Fixed a crash in riso and woodcut when a title's script has no installed font (matplotlib 3.11 rejected the `sans-serif` fallback).
+
+### procedural-realism
+- Timelapse frames render four at a time (`--jobs`, one core each): the first frame fills the caches alone, the rest only read them, and the frames come out bit-identical. A 9-frame draft went from 202 s to 76 s on 4 cores.
+- When OpenStreetMap can't be reached, `--city` remembers it in `<work>/osm` and uses the synthetic streets straight away. Before, every timelapse frame waited minutes on the Overpass mirrors again, and a frame rendered after they recovered switched the city to real streets mid-clip.
+
 ## [1.2.0] - 2026-09-26
 
 ### Web app

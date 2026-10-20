@@ -196,7 +196,7 @@ One CPU core:
 | All six styles + contact sheet | ~40 s |
 | Studio page | ~5 s to build |
 | Photographic terrain, 3000 × 1000 | 3–12 min (resumable) |
-| Timelapse, 20 s at 1200 × 400, every frame rendered | ~6 hours (resumable; `--blend 2` halves it) |
+| Timelapse, 20 s at 1200 × 400, every frame rendered | ~2 hours on 4 cores, ~6 on one (resumable; `--blend 2` halves it) |
 | Clean still life, 2400 × 800 | ~1 hour (resumable) |
 | Painting, 3000 × 1000 | 10–60 s |
 
