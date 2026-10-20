@@ -198,7 +198,7 @@
     writeHash();
   }
   function install(prep){
-    S.prep = prep;
+    S.prep = prep; S.shown = S.target;
     const e = makeEngine(prep.cfg, prep.dem, prep.wat); S.eng = e;
     const c = prep.cfg, sn = $("snow");
     sn.min = Math.round((c.base_km + 0.3 * (c.peak_km - c.base_km)) * 1000 / 10) * 10;
@@ -438,7 +438,7 @@
     for (const f of j.features || []){
       const pr = f.properties, kind = pr.osm_value; if (!(kind in RANK) || !pr.name) continue;
       const [lon, lat] = f.geometry.coordinates;
-      out.push({ kind: "osm", src: "photon", name: pr.name, lat, lon, type: kind.replace(/_/g, " "), country: pr.country || "", where: [pr.state, pr.country].filter(Boolean).join(", "), rank: RANK[kind] });
+      out.push({ kind: "osm", src: "photon", osm: pr.osm_type && pr.osm_id ? `${pr.osm_type}${pr.osm_id}` : "", name: pr.name, lat, lon, type: kind.replace(/_/g, " "), country: pr.country || "", where: [pr.state, pr.country].filter(Boolean).join(", "), rank: RANK[kind] });
     }
     return out.map((r, i) => [r, i]).sort((a, b) => a[0].rank - b[0].rank || a[1] - b[1]).map(a => a[0]).slice(0, 7);
   }
@@ -448,8 +448,24 @@
     const j = await (await fetch(u)).json();
     return j.map(r => ({ kind: "osm", src: "nominatim", name: r.name || r.display_name.split(",")[0], lat: +r.lat, lon: +r.lon, type: (r.type || "").replace(/_/g, " "),
       country: (r.display_name || "").split(",").pop().trim(), where: r.display_name.split(",").slice(1).join(",").trim(),
-      elev: r.extratags && parseInt(r.extratags.ele, 10) || null, native: r.namedetails && r.namedetails.name || "", rank: r.category === "natural" ? (RANK[r.type] ?? 3) : 5 }))
+      elev: eleOf(r.extratags), native: r.namedetails && r.namedetails.name || "", rank: r.category === "natural" ? (RANK[r.type] ?? 3) : 5 }))
       .sort((a, b) => a.rank - b.rank);
+  }
+  function eleOf(tags){                     // OSM ele: metres by convention, sometimes "4392 m" or "14,411 ft"
+    const s = tags && tags.ele; if (!s) return null;
+    const m = parseFloat(String(s).replace(/,/g, "")) * (/ft|'/i.test(s) ? 0.3048 : 1);
+    return m > 0 && m < 9000 ? Math.round(m) : null;
+  }
+  async function enrich(target, osm){       // Photon carries no ele tag: one Nominatim lookup by OSM id, applied whenever it lands
+    try {
+      const u = new URL("https://nominatim.openstreetmap.org/lookup");
+      for (const [k, v] of [["osm_ids", osm], ["format", "jsonv2"], ["extratags", "1"], ["namedetails", "1"], ["accept-language", "en"]]) u.searchParams.set(k, v);
+      const r = (await (await fetch(u)).json())[0]; if (!r || S.target !== target) return;
+      const elev = eleOf(r.extratags), nat = r.namedetails && r.namedetails.name || "";
+      if (elev && !target.elev) target.elev = elev;
+      if (!target.native && nat !== target.name && /[^\u0000-ɏ]/.test(nat)) target.native = nat;
+      if (S.eng && S.shown === target){ applyLabels(); syncUI(); caption(); schedule("full"); writeHash(); }
+    } catch {}
   }
   const coordsRe = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*°?\s*([NS])?\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*°?\s*([EW])?\s*$/i;
   function parseCoords(text){
@@ -529,7 +545,9 @@
     if (it.kind === "coords"){ q.value = `${it.lat}, ${it.lon}`; return go({ name: fmtLL(it.lat, it.lon), native: "", lat: it.lat, lon: it.lon, elev: null, country: "" }, null); }
     q.value = it.name;
     const native = it.native && it.native !== it.name && /[^\u0000-ɏ]/.test(it.native) ? it.native : "";
-    go({ name: it.name, native, lat: it.lat, lon: it.lon, elev: it.elev || null, country: it.country }, null);
+    const target = { name: it.name, native, lat: it.lat, lon: it.lon, elev: it.elev || null, country: it.country };
+    go(target, null);
+    if (it.src === "photon" && it.osm) enrich(target, it.osm);
   }
   function go(target, view){ S.over = {}; S.lbl = {}; S.seed = 1915; load(target, view); document.getElementById("stage").scrollIntoView({ behavior: RM ? "auto" : "smooth", block: "nearest" }); }
 

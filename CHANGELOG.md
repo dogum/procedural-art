@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. Versions follow [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Web app
+- A mountain picked from the OpenStreetMap suggestions gets its surveyed elevation (OSM `ele`) and native name: Photon search carries neither, so one Nominatim lookup by OSM id fills them in while the elevation tiles load. The label, caption and share link show the surveyed height instead of the elevation-data estimate. `ele` values in feet are converted.
+
 ## [1.2.0] - 2026-09-26
 
 ### Web app
