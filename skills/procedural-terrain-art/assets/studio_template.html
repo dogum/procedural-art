@@ -198,6 +198,16 @@ function demAt(E, N){
 }
 const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
 function rng(seed){ let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 0) / 4294967296; }; }
+/* smooth value noise on the integer lattice, ~0..1, and solid ink where a cover beats it (mirror vnoise() and
+   ink_break() in render.py): a fade prints as broken ink instead of a grey tint */
+function vnoise(x, y){
+  const xi = Math.floor(x), yi = Math.floor(y); let fx = x - xi, fy = y - yi;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  const hs = (i, j) => { const v = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return v - Math.floor(v); };
+  const a = hs(xi, yi), b = hs(xi + 1, yi), c = hs(xi, yi + 1), d = hs(xi + 1, yi + 1);
+  return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+}
+const inkBreak = (cover, n) => cover > 0 ? clamp01((cover - Math.min(0.95, Math.max(0.05, (n - 0.5) * 1.8 + 0.5))) / 0.05 + 0.5) : 0;
 function hex(c){ const n = parseInt(c.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; }
 function rgba(c, a){ return `rgba(${Math.round(c[0]*255)},${Math.round(c[1]*255)},${Math.round(c[2]*255)},${a})`; }
 
@@ -784,7 +794,8 @@ function renderRiso(ctx, sc){
   const { h, sh } = lineCommon(sc);
   ridgelines(bctx, sc, P.spacing, (i, px, u, v, dep) => {
     const hh = sc.sampleRow(h, i, px), l = sc.sampleRow(sh, i, px);
-    return [Math.pow(clamp01((hh - 0.15) / 0.9), 0.8) * edgeFade(sc, px, u, v) * (0.5 + 0.8 * (1 - l)), 1.6 - 0.7 * dep];
+    const fade = Math.pow(clamp01((hh - 0.15) / 0.9), 0.8) * edgeFade(sc, px, u, v);   // a fading line breaks into dashes of full ink
+    return [inkBreak(fade, vnoise(px / (26 * s), i * 0.731)) * (0.5 + 0.8 * (1 - l)), 1.6 - 0.7 * dep];
   }, [0, 0, 0]);
   drawCoast(bctx, sc, [0, 0, 0], 0.9, 1.1);
   if (P.labels){ bctx.fillStyle = "#000"; bctx.font = `500 ${128 * s}px ${CFG.titleFont}`; bctx.fillText(CFG.native, 120 * s, (190 + sc.oy) * s);
@@ -846,7 +857,9 @@ function renderWoodcut(ctx, sc){
     if (o >= 0){ const hh = sc.sampleRow(t.h, o, x), dd = V0 + o * t.dv - ZCAM, u = (x / s - sc.cx) * dd / sc.fx;
       cover = xf((x / s - sc.fadeX - 50) / 350) * clamp01((46 - Math.abs(u)) / 10) * clamp01((dd + ZCAM - V0) / NF);
       body = (cb ? canyon * carve(sc.sampleRow(cb, o, x)) + (1 - canyon) * clamp01((hh - 0.25) / 0.6) : clamp01((hh - 0.25) / 0.6)) * cover;
-      if (t.water){ const w = sc.sampleRow(t.water, o, x); body = Math.max(body * (1 - w), w * cover); } }   // water: one flat block of ink
+      if (t.water){ const w = sc.sampleRow(t.water, o, x); body = Math.max(body * (1 - w), w * cover); }   // water: one flat block of ink
+      // a thinning block breaks into gouges along the rows, never grey; the fine grain term roughens the gouge ends
+      body = inkBreak(body, vnoise(x / (70 * s), o / 2.5) + 0.18 * (vnoise(x / (7 * s), y / (2 * s)) - 0.5)); }
     if (P.sun){ const ds = Math.hypot(x - sun[0], y - sun[1]);
       let sm = clamp01((sr - ds) / 1.5) * (1 - (cb ? cover : body));
       if (ds > 30 * s && ((ds / s) % 22) < 3.2) sm *= 0.15;

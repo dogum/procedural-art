@@ -291,6 +291,22 @@ def style_stipple(t, sc, cfg):
     return fig
 
 
+def vnoise(x, y):
+    """smooth value noise on the integer lattice, ~0..1 (mirrors vnoise() in the studio engine)"""
+    xi, yi = np.floor(x), np.floor(y); fx, fy = x - xi, y - yi
+    fx, fy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+    hs = lambda i, j: np.mod(np.sin(i * 127.1 + j * 311.7) * 43758.5453, 1.0)
+    a, b = hs(xi, yi), hs(xi + 1, yi)
+    c, d = hs(xi, yi + 1), hs(xi + 1, yi + 1)
+    return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy
+
+
+def ink_break(cover, n, w=0.05):
+    """Solid ink where `cover` beats the noise `n`, paper elsewhere: a fade becomes broken ink instead of a grey tint.
+    Full cover stays solid and zero stays paper."""
+    return np.clip((cover - np.clip((n - 0.5) * 1.8 + 0.5, 0.05, 0.95)) / w + 0.5, 0, 1) * (cover > 0)
+
+
 def halftone(xx, yy, tone, cell, angle=15):
     a = np.radians(angle); X = xx * np.cos(a) + yy * np.sin(a); Y = -xx * np.sin(a) + yy * np.cos(a)
     fx_, fy_ = np.mod(X, cell) - cell / 2, np.mod(Y, cell) - cell / 2
@@ -313,7 +329,9 @@ def style_riso(t, sc, cfg):
     pink = np.maximum(pink, halftone(xx, yy, G["mask"] * pres * G["shade"] ** 2 * 0.55, 7 * s))
     def alpha(c):
         i, px = c["i"], c["px"]; hh, sh = sc.sample(t.h, i, px), sc.sample(t.shade, i, px)
-        return np.clip((hh - 0.15) / 0.9, 0, 1) ** 0.8 * sc.edge_fade(c["u"], c["v"]) * (0.5 + 0.8 * (1 - sh)) * sc.xfade(px)
+        fade = np.clip((hh - 0.15) / 0.9, 0, 1) ** 0.8 * sc.edge_fade(c["u"], c["v"]) * sc.xfade(px)
+        # a fading line breaks into dashes of full ink: a riso drum prints solid or not at all
+        return ink_break(fade, vnoise(px / (26 * s), c["i"] * 0.731)) * (0.5 + 0.8 * (1 - sh))
     segs, cols, wids = sc.ridgelines(cfg["spacing"] * 4 / 3, alpha, lambda c: 1.6 - 0.7 * c["depth"], (0, 0, 0))
     fig, ax = figure(np.ones((H, W, 3))); add_lines(ax, segs, cols, wids, scale=0.8)
     if t.water is not None: draw_water(ax, t, sc, cfg, (0, 0, 0), G, coast=(0.9, 1.1), waves=None)
@@ -363,6 +381,8 @@ def style_woodcut(t, sc, cfg):
     if t.water is not None:       # water is one flat block of ink
         body = np.maximum(body * (1 - G["water"]), G["water"] * sc.xfade(xx, 350, 50) * G["edge"])
     body = gaussian_filter(body, 0.7 * s)
+    # a thinning block breaks into gouges along the terrain rows, never grey; the fine grain term roughens the gouge ends
+    body = ink_break(body, vnoise(xx / (70 * s), G["row"] / 2.5) + 0.18 * (vnoise(xx / (7 * s), yy / (2 * s)) - 0.5))
     bg = parchment(W, H, cfg["seed"] + 13, tuple(paper_c), 0.1)
     pts = sc.peaks_screen([p["latlon"] for p in cfg["peaks"]])
     p0 = pts[0] if pts and pts[0] is not None else np.array([2150 * s, 300 * s])

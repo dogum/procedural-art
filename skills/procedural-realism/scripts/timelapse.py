@@ -14,6 +14,9 @@ night frames are biased darker. Everything after `--` goes to pbr_terrain.py unc
       --peak 39.7019,44.2986 --from 40.1963,44.5238 --cam-offset 0 --city 0.8
   (run it again to resume; finished frames are skipped)
 
+--jobs N renders N frames at once (default up to 4), one pbr_terrain.py process per core. The first frame runs alone
+and fills the sun-independent caches; the rest only read them, so the frames are the same as one at a time.
+
 --blend K renders only every K-th frame and cross-fades the rest in linear light (the old, cheaper method: about
 K times faster, but shadows fade instead of moving). --keyframes/--interp are the old names: n keyframes blended
 i times give (n - 1) * i + 1 frames.
@@ -24,6 +27,7 @@ arguments and the renderer's source files. Tone-mapped frames go to <work>/frame
 --blend and the exposure settings.
 """
 import argparse, datetime as dt, hashlib, json, math, os, re, shutil, subprocess, sys, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +39,8 @@ ap.add_argument("--frames", type=int, default=480, help="output frames (480 = 20
 ap.add_argument("--blend", type=int, default=1, help="render every K-th frame and cross-fade between them (1 = render all)")
 ap.add_argument("--keyframes", type=int, default=None, help="old name: rendered frames, with --interp")
 ap.add_argument("--interp", type=int, default=None, help="old name for --blend")
+ap.add_argument("--jobs", type=int, default=min(4, os.cpu_count() or 1), help="frames rendered at once, one core each "
+                "(default: up to 4); lower it if memory runs short at large sizes")
 ap.add_argument("--fps", type=int, default=24)
 ap.add_argument("--date", default="2026-04-20", help="YYYY-MM-DD for the solar path")
 ap.add_argument("--utc-offset", type=float, default=0.0, help="hours; local time = UTC + offset")
@@ -116,20 +122,18 @@ name = lambda k: os.path.join(RD, f"sun_{plan[k][0]:.4f}_{plan[k][1]:+.4f}")
 lum = np.array([0.2126, 0.7152, 0.0722], np.float32)
 
 # ---- 1. renders (resumable: a frame is done when its linear image exists; an interrupted one resumes its bands)
-todo = [k for k in rendered if not os.path.exists(name(k) + ".npy")]
-t_start = time.time()
-for j, k in enumerate(todo):
+def render(k):
     az, el = plan[k]; hdr = name(k)
     tag = f"tl{RH}_{az:.4f}_{el:+.4f}"
     cmd = [sys.executable, os.path.join(HERE, "pbr_terrain.py"), *pbr, "--work", a.work, "--size", a.size, "--tag", tag,
            "--sun-az", f"{az:.4f}", "--sun-el", f"{el:.4f}", "--sky", "physical", "--geom-cache"]
     r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode: print(r.stdout[-2000:], r.stderr[-3000:]); sys.exit(f"pbr_terrain failed on frame {k}")
+    if r.returncode: print(r.stdout[-2000:], r.stderr[-3000:]); raise RuntimeError(f"pbr_terrain failed on frame {k}")
     bands = os.path.join(a.work, f"bands_{W}x{H}_{tag}")
-    tmp = os.path.join(RD, "composite.tmp.npy")                      # city lights, bokeh and DOF composited in linear light
+    tmp = hdr + ".composite.tmp.npy"                                 # city lights, bokeh and DOF composited in linear light
     # post applies the blue-hour white balance and saturation (they ramp in with the sun from +1 to -2 deg) before
     # saving the linear image, and reports its exposure key: whole frame by day, sky and far terrain at blue hour
-    p = subprocess.run([sys.executable, os.path.join(HERE, "post_terrain.py"), "--bands", bands, "--out", os.path.join(RD, "preview.tmp.jpg"),
+    p = subprocess.run([sys.executable, os.path.join(HERE, "post_terrain.py"), "--bands", bands, "--out", hdr + ".preview.tmp.jpg",
                         "--exposure", "auto", "--save-hdr", tmp], check=True, capture_output=True, text=True)
     img = np.load(tmp)
     m_ = re.search(r"auto exposure ([0-9.eE+-]+)", p.stdout)                 # exposure = 0.30 / key
@@ -138,11 +142,22 @@ for j, k in enumerate(todo):
     np.save(hdr + ".tmp.npy", np.minimum(img / key, 65000).astype(np.float16))
     open(hdr + ".key", "w").write(repr(key))
     os.replace(hdr + ".tmp.npy", hdr + ".npy")
+    for f in (tmp, hdr + ".preview.tmp.jpg"):
+        if os.path.exists(f): os.remove(f)
     shutil.rmtree(bands, ignore_errors=True)                         # the linear frame is all we need from here on
-    el_t = time.time() - t_start
-    print(f"render {j + 1}/{len(todo)} (frame {k}): az {az:.2f} el {el:+.2f}  {el_t / (j + 1):.1f} s/frame, "
-          f"~{el_t / (j + 1) * (len(todo) - j - 1) / 60:.0f} min left", flush=True)
-for f in ("composite.tmp.npy", "preview.tmp.jpg"):
+
+todo = [k for k in rendered if not os.path.exists(name(k) + ".npy")]
+t_start = time.time()
+# the first frame fills the sun-independent caches alone; after that the frames only read them, so --jobs of
+# them render side by side (each pbr_terrain.py is one process on one core)
+pool = ThreadPoolExecutor(max(1, a.jobs))
+done = 0
+for f in as_completed([pool.submit(render, k) for k in todo[:1]] if todo else []): f.result(); done += 1
+for f in as_completed([pool.submit(render, k) for k in todo[1:]]):
+    f.result(); done += 1; el_t = time.time() - t_start
+    if done % max(1, a.jobs) == 0 or done == len(todo):
+        print(f"render {done}/{len(todo)}: {el_t / done:.1f} s/frame, ~{el_t / done * (len(todo) - done) / 60:.0f} min left", flush=True)
+for f in ("composite.tmp.npy", "preview.tmp.jpg"):                    # left by older versions
     if os.path.exists(os.path.join(RD, f)): os.remove(os.path.join(RD, f))
 
 # ---- 2. exposure: log-average key smoothed over sun time, darker once the sun is down
@@ -163,18 +178,21 @@ redo = not os.path.exists(efile) or json.load(open(efile)).get("exposure") != ex
 json.dump(dict(keys=np.exp(logk).tolist(), exposure=expo.tolist()), open(efile, "w"), indent=1)
 
 # ---- 3. tone-map every frame (cross-fading neighbours in linear light only with --blend > 1)
-tmp = os.path.join(a.work, f"tone_{FH}.npy")
-for i in range(n):
+def tone(i):
     out = os.path.join(FR, f"f{i:05d}.png")
-    if os.path.exists(out) and not redo: continue
+    if os.path.exists(out) and not redo: return
     k0 = i // K * K; f = (i - k0) / K
     img = load(k0)
     if f > 0: img = (1 - f) * img + f * load(k0 + K)
+    tmp = os.path.join(a.work, f"tone_{FH}_{i:05d}.npy")
     np.save(tmp, img)
     subprocess.run([sys.executable, os.path.join(HERE, "post_terrain.py"), "--hdr-in", tmp, "--out", out,
                     "--exposure", f"{expo[i]:.5f}", "--seed", str(i + 1)], check=True, capture_output=True)
-    if i % 24 == 0 or i == n - 1: print(f"frames {i + 1}/{n}", flush=True)
-if os.path.exists(tmp): os.remove(tmp)
+    os.remove(tmp)
+for j, f in enumerate(as_completed([pool.submit(tone, i) for i in range(n)])):
+    f.result()
+    if j % 24 == 0 or j == n - 1: print(f"frames {j + 1}/{n}", flush=True)
+pool.shutdown()
 
 # ---- 4. encode exactly this run's frames; libx264 / yuv420p needs even dimensions, so odd sizes are padded down
 subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(a.fps), "-i", os.path.join(FR, "f%05d.png"),
