@@ -10,8 +10,8 @@
 #             flat-roofed apartment blocks when --city is on. Close up: stone / plaster / board walls, tile /
 #             tin / slate roofs, windows with frames, sills and shutters, doors, plinths and weathering
 #   clutter   dry-stone walls (battered, with an uneven capstone top), hedges and wooden fences on field
-#             edges, dirt tracks between houses,
-#             crop rows and grass texture on the ground, all only within a few hundred metres
+#             edges, dirt tracks between houses, crop rows and grass texture on the ground, all only
+#             within a few hundred metres
 #   render    each instance is projected to its screen bounding box; only those pixels cast rays
 #             against it (2x2 sub-samples for anti-aliasing), so cost scales with covered pixels
 #   shadows   sun rays walk the instance grids (closed-form shapes) for terrain and instance hits;
