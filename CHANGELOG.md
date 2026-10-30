@@ -14,6 +14,7 @@ All notable changes to this project are documented here. Versions follow [semant
 ### procedural-realism
 - Timelapse frames render four at a time (`--jobs`, one core each): the first frame fills the caches alone, the rest only read them, and the frames come out bit-identical. A 9-frame draft went from 202 s to 76 s on 4 cores.
 - When OpenStreetMap can't be reached, `--city` remembers it in `<work>/osm` and uses the synthetic streets straight away. Before, every timelapse frame waited minutes on the Overpass mirrors again, and a frame rendered after they recovered switched the city to real streets mid-clip.
+- Close foregrounds: dry-stone walls lean inward (30 % narrower at the top) and their capstones each sit at their own height and tilt, so the wall top is uneven against the sky instead of ruler-straight; the top is now a height field, so walls seen from above are solid. Village houses get a raised ridge cap, and the edges of the roof are a dark timber bargeboard (a dark folded edge on tin) on a thinner roof slab, where a band of sunlit roof colour used to outline the roof. Standing grass grows in clumps and its dry blades gather in drier patches, so a low camera no longer sees an even carpet. Render time is unchanged.
 
 ## [1.2.0] - 2026-09-26
 

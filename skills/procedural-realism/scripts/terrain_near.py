@@ -6,10 +6,11 @@
 #             placed by slope / elevation / water / forest-noise masks; poplar rows on field edges.
 #             Crowns are an envelope carved by 3-octave noise into leaf clumps with gaps; the carving
 #             fades with the pixels per metre of each tree (level of detail), so far trees stay solid
-#   houses    convex boxes with gable roofs on a grid aligned with the field pattern; flat-roofed
-#             apartment blocks when --city is on. Close up: stone / plaster / board walls, tile / tin /
-#             slate roofs, windows with frames, sills and shutters, doors, plinths and weathering
-#   clutter   dry-stone walls, hedges and wooden fences on field edges, dirt tracks between houses,
+#   houses    convex boxes with gable roofs and a ridge cap on a grid aligned with the field pattern;
+#             flat-roofed apartment blocks when --city is on. Close up: stone / plaster / board walls, tile /
+#             tin / slate roofs, windows with frames, sills and shutters, doors, plinths and weathering
+#   clutter   dry-stone walls (battered, with an uneven capstone top), hedges and wooden fences on field
+#             edges, dirt tracks between houses,
 #             crop rows and grass texture on the ground, all only within a few hundred metres
 #   render    each instance is projected to its screen bounding box; only those pixels cast rays
 #             against it (2x2 sub-samples for anti-aliasing), so cost scales with covered pixels
@@ -260,6 +261,10 @@ def _ground_texture(x, y, z, dist, alb, vf, td):
     rx_, ry_ = X - CAM[0] * 1000, Y - CAM[1] * 1000
     angv = np.arctan2(rx_ * FH[1] - ry_ * FH[0], rx_ * FH[0] + ry_ * FH[1])  # bearing from the view axis
     band = np.floor(ldm / 0.4); dmb = np.exp((band + 0.5) * 0.4)             # columns stay put within a distance band
+    # grass grows in clumps: dense tussocks and thin patches about a metre across, and dry blades gather where the
+    # 1.4 m dry-grass noise is high instead of being sprinkled evenly (an even sprinkle read as carpet)
+    clump = 0.3 + 0.7 * np.clip((vnoise2(X / 0.8 + 5.0, Y / 0.8 - 2.0) - 0.3) / 0.4, 0, 1)
+    dryness = np.clip((g2 - 0.35) / 0.4, 0, 1)
     for w_, h_, salt, strength in ((0.15, 0.3, 160, 0.55), (0.04, 0.35, 170, 0.45)):
         ci_ = np.floor(angv * dmb / w_) + band * 100003; off = hash2(ci_.astype(np.int64), 0, salt)
         lv = ldm / (h_ / Hc) + off
@@ -267,11 +272,11 @@ def _ground_texture(x, y, z, dist, alb, vf, td):
         hh = hash2(ci_.astype(np.int64), cj_.astype(np.int64), salt + 1)
         lean = (hash2(ci_.astype(np.int64), cj_.astype(np.int64), salt + 2) - 0.5) * 0.5
         fx = angv * dmb / w_ - (ci_ - band * 100003) - 0.5 - lean * fv
-        blade = (np.abs(fx) < 0.42 * (1 - fv) ** 0.6) & (hh < 0.75)
+        blade = (np.abs(fx) < 0.42 * (1 - fv) ** 0.6) & (hh < 0.75 * clump)
         vis = np.clip((w_ / np.maximum(fc, 1e-5) - 1.0) / 2.0, 0, 1) * grassy_  # fades out below ~1 px wide
         tone = np.where(blade, 0.8 + 0.45 * fv * (0.6 + 0.8 * hh), 0.72)      # tips catch the light, gaps are dark
         out = out * (1 + (tone - 0.85) * strength * 1.6 * vis)[:, None]
-        dryb = blade & (hh < 0.08) & (vis > 0)
+        dryb = blade & (hh < 0.2 * dryness * clump) & (vis > 0)
         out = np.where(dryb[:, None], out * (1 - 0.35 * vis[:, None]) + np.array([0.30, 0.27, 0.14]) * 0.35 * vis[:, None], out)
     # patches in grass and lucerne: clover (dark), seed heads (pale gold), a few metres across
     if a.biome != "temperate":
@@ -1096,7 +1101,7 @@ def _house_planes(ids):
     return [(one, zero, zero, A), (-one, zero, zero, A), (zero, one, zero, B), (zero, -one, zero, B), (zero, zero, -one, -z0),
             (zero, sl, one, HW + HR), (zero, -sl, one, HW + HR)]
 
-def _convex(q, d, planes):
+def _convex(q, d, planes, far=False):
     tn = np.zeros(len(q)); tf = np.full(len(q), np.inf); which = np.zeros(len(q), np.int8); miss = np.zeros(len(q), bool)
     for k, (nx, ny, nz, dd) in enumerate(planes):
         den = nx * d[:, 0] + ny * d[:, 1] + nz * d[:, 2]; num = dd - (nx * q[:, 0] + ny * q[:, 1] + nz * q[:, 2])
@@ -1107,11 +1112,12 @@ def _convex(q, d, planes):
         tf = np.where(ext, np.minimum(tf, t), tf)
         miss |= (np.abs(den) <= 1e-12) & (num < 0)
     hit = ~miss & (tn <= tf) & (tf > 0) & (tn > 0)
+    if far: return np.where(hit, tn, np.inf), which, tf
     return np.where(hit, tn, np.inf), which
 
 def _roof_slab(ids, sgn):
     A, B, HW, HR = INST["a"][ids], INST["b"][ids], INST["hw"][ids], INST["hr"][ids]
-    ov, th = 0.55, 0.28; one = np.ones_like(A); zero = np.zeros_like(A); sl = HR / B
+    ov, th = 0.55, 0.18; one = np.ones_like(A); zero = np.zeros_like(A); sl = HR / B
     top = HW + HR + 0.06
     return [(one, zero, zero, A + ov), (-one, zero, zero, A + ov), (zero, -sgn * one, zero, zero), (zero, sgn * one, zero, B + ov),
             (zero, sgn * sl, one, top), (zero, -sgn * sl, -one, -(top - th))]
@@ -1139,6 +1145,21 @@ def isect_houses(O, D, ids, want=False):
                 for w_, (nx, ny, nz, _) in enumerate(pl):
                     m = better & (ws == w_)
                     nl[k[m]] = np.stack([nx[m], ny[m], nz[m]], 1)
+        # ridge cap: a course of capping tiles or a folded sheet riding the ridge, 13 cm proud of the slopes
+        # with its own small pitch, so the ridge line has relief instead of being a darker stripe (village houses)
+        kr = k[INST["tp"][ids[k]] == T_HOUSE]
+        if len(kr):
+            ir = ids[kr]; A, HW, HR = INST["a"][ir], INST["hw"][ir], INST["hr"][ir]
+            one = np.ones(len(kr)); zero = np.zeros(len(kr)); rtop = HW + HR + 0.06 + 0.13
+            pl = [(one, zero, zero, A + 0.5), (-one, zero, zero, A + 0.5), (zero, one, zero, 0.17 * one), (zero, -one, zero, 0.17 * one),
+                  (zero, 0.55 * one, one, rtop), (zero, -0.55 * one, one, rtop), (zero, zero, -one, -(HW + HR - 0.3))]
+            tr_, wr_ = _convex(q[kr], d[kr], pl)
+            better = tr_ < t[kr]
+            t[kr[better]] = tr_[better]; kind[kr[better]] = 1
+            if want:
+                for w_, (nx, ny, nz, _) in enumerate(pl):
+                    m = better & (wr_ == w_)
+                    nl[kr[m]] = np.stack([nx[m], ny[m], nz[m]], 1)
         # chimney: a box through one roof slope, rising 0.9 m above the ridge (village houses only)
         kc = k[INST["tp"][ids[k]] == T_HOUSE]
         if len(kc):
@@ -1158,28 +1179,76 @@ def isect_houses(O, D, ids, want=False):
     nl /= np.maximum(np.linalg.norm(nl, axis=1, keepdims=True), 1e-9)
     return t, which, kind, nl, q, d
 
-def isect_walls(O, D, ids, want=False, cut=True):
-    """field walls, hedges (boxes with a ragged top) and post-and-rail fences (a thin box with cut-outs)"""
-    q, d = _local(O, D, ids)
+WALL_BATTER = 0.3                      # a dry-stone wall is this much narrower at the top than at its foot
+
+def _wall_planes(ids):
+    """field walls as convex slabs; stone walls lean inward (batter), so their faces tilt a little to the sky"""
     A, B, HW = INST["a"][ids], INST["b"][ids], INST["hw"][ids]
     one = np.ones_like(A); zero = np.zeros_like(A)
-    t, which = _convex(q, d, [(one, zero, zero, A), (-one, zero, zero, A), (zero, one, zero, B), (zero, -one, zero, B),
-                              (zero, zero, -one, 0.6 * one), (zero, zero, one, HW)])
+    stone = (INST["tp"][ids] == T_WALL) & (INST["mat"][ids] != 1)
+    kb = np.where(stone, WALL_BATTER * B / np.maximum(HW, 0.1), 0.0)       # y + kb z <= B
+    return [(one, zero, zero, A), (-one, zero, zero, A), (zero, one, kb, B), (zero, -one, kb, B),
+            (zero, zero, -one, 0.6 * one), (zero, zero, one, HW)]
+
+def _cap_coord(x, ids):
+    """capstone index coordinate along a stone wall: stones 30-60 cm long, irregular, the same in geometry and shading"""
+    sd = INST["seed"][ids]; so = (sd * 1e4).astype(np.int64)
+    cl = 0.38 + 0.12 * hash2(so, 0, 93)
+    return x / cl + 0.7 * (tnoise(x * 0.9, sd * 13, 2.0) - 0.5) + sd * 7
+
+def _wall_top(p, ids):
+    """height of a stone wall's ragged top at local p: each capstone set at its own height (up to 20 cm below the
+    tallest) with its own tilt, flat on top with rounded ends and edges, so the silhouette is uneven"""
+    HW, B, sd = INST["hw"][ids], INST["b"][ids], INST["seed"][ids]
+    so = (sd * 1e4).astype(np.int64)
+    ca = _cap_coord(p[:, 0], ids); ci = np.floor(ca).astype(np.int64); fc = ca - ci
+    h = HW - 0.02 - 0.18 * hash2(ci, so, 92) ** 1.3
+    tilt = (hash2(ci, so, 94) - 0.5) * 0.12
+    e = np.clip((np.abs(2 * fc - 1) - 0.5) / 0.5, 0, 1)
+    bt = B * (1 - WALL_BATTER)
+    return h + tilt * (2 * fc - 1) - 0.07 * e ** 2 - 0.04 * np.clip(np.abs(p[:, 1]) / np.maximum(bt, 0.05), 0, 1) ** 2
+
+def isect_walls(O, D, ids, want=False, cut=True):
+    """field walls (battered slabs with a ragged capstone top), hedges (a ragged top) and post-and-rail fences
+    (a thin box with cut-outs)"""
+    q, d = _local(O, D, ids)
+    HW = INST["hw"][ids]
+    planes = _wall_planes(ids)
+    t, which, tf = _convex(q, d, planes, far=True)
     if cut:
         p = q + d * np.where(np.isfinite(t), t, 0)[:, None]
         fence = INST["tp"][ids] == T_FENCE; sd = INST["seed"][ids]
         post = np.mod(p[:, 0] + 50.0 + sd * 2.4, 2.4) < 0.12
         rail = (np.abs(p[:, 2] - HW + 0.1) < 0.055) | (np.abs(p[:, 2] - HW * 0.5) < 0.05)
         hedge = INST["mat"][ids] == 1
-        # hedges are ragged; stone walls have a level capstone course that steps a few cm from stone to stone
-        top = np.where(hedge, HW - 0.35 * tnoise(p[:, 0] * 1.6 + sd * 90, p[:, 1] * 0.5 + 7.0, sd * 30) ** 1.2,
-                       HW - 0.05 * hash2(np.floor(p[:, 0] / 0.45 + sd * 7).astype(np.int64), (sd * 1e4).astype(np.int64), 92))
+        stone = ~fence & ~hedge
+        top = np.where(hedge, HW - 0.35 * tnoise(p[:, 0] * 1.6 + sd * 90, p[:, 1] * 0.5 + 7.0, sd * 30) ** 1.2, HW)
+        top = np.where(stone, _wall_top(p, ids), top)
         bad = np.where(fence, ~(post | rail), p[:, 2] > top)
+        # a ray that enters a stone wall above its capstones may still land on them further in: march the
+        # top as a height field through the slab, then refine the crossing linearly
+        m = np.where(stone & bad & np.isfinite(t))[0]
+        if len(m):
+            t0, t1 = t[m], np.minimum(tf[m], t[m] + 4.0)
+            qm, dm, im = q[m], d[m], ids[m]
+            prev_t, prev_g = t0, p[m, 2] - top[m]
+            hitm = np.zeros(len(m), bool); th = np.full(len(m), np.inf)
+            for k_ in range(1, 13):
+                tk = t0 + (t1 - t0) * k_ / 12
+                pk = qm + dm * tk[:, None]
+                g = pk[:, 2] - _wall_top(pk, im)
+                new = ~hitm & (g <= 0)
+                tc = prev_t + (tk - prev_t) * prev_g / np.maximum(prev_g - g, 1e-9)
+                th = np.where(new, tc, th); hitm |= new
+                prev_t, prev_g = tk, g
+            t[m] = th; which[m] = np.where(hitm, 5, which[m])
+            bad[m] = ~hitm
         t = np.where(bad, np.inf, t)
     if not want: return t
     nl = np.zeros((len(ids), 3))
-    for w_, n_ in enumerate(([1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, -1], [0, 0, 1])):
-        nl[which == w_] = n_
+    for w_, (nx, ny, nz, _) in enumerate(planes):
+        mm = which == w_; nl[mm] = np.stack([nx[mm], ny[mm], nz[mm]], 1)
+    nl /= np.maximum(np.linalg.norm(nl, axis=1, keepdims=True), 1e-9)
     return t, which, nl, q, d
 
 def isect_any(O, D, ids, noisy=None):
@@ -1523,13 +1592,15 @@ def shade_walls(Pk, Dk, ii, sunc, Ok):
     # dry stone: roughly level courses of 20-35 cm stones, a capstone course on top, shallow dark joints
     along = np.where(np.abs(nl[:, 0]) > 0.5, ql[:, 1], x)
     HWk = INST["hw"][ii]; so = (sd * 1e4).astype(np.int64)
-    cap = z > HWk - 0.17
+    topk = np.where(fence | hedge, HWk, _wall_top(ql, ii))                    # capstones follow the ragged top
+    cap = z > topk - 0.17
     zr = z / 0.2 + 0.7 * (tnoise(along * 0.7, sd * 30, 1.0) - 0.5) + 0.25 * (tnoise(along * 2.2, sd * 11, 3.0) - 0.5)   # courses wander
     row = np.floor(zr); rj = zr - row
-    row = np.where(cap, 999, row); rj = np.where(cap, (z - HWk + 0.17) / 0.17, rj)
+    row = np.where(cap, 999, row); rj = np.where(cap, np.clip((z - topk + 0.17) / 0.17, 0, 1), rj)
     slen = np.where(cap, 0.45, 0.24 + 0.1 * hash2(row.astype(np.int64), so, 89))   # stone length per course
     ar = along / slen + hash2(row.astype(np.int64), so, 88) * 3 + 0.55 * (tnoise(along * 2.5, z * 4, sd * 9) - 0.5) \
        + 0.35 * (rj - 0.5) * (hash2(np.floor(along / slen).astype(np.int64), row.astype(np.int64) + so, 87) - 0.5)   # slanted joints
+    ar = np.where(cap & (np.abs(nl[:, 0]) < 0.5), _cap_coord(x, ii), ar)      # capstone joints sit where the top steps
     stn = np.floor(ar); sj = ar - stn
     hst = hash2(stn.astype(np.int64) * 7 + row.astype(np.int64), so, 90)
     tint = 0.8 + 0.4 * hst                                                     # low contrast between stones
@@ -1573,6 +1644,8 @@ def house_albedo(ql, which, kind, nl, ii, mpp):
     halfw = np.where(xf, B, A)
     roof = kind == 1
     top = roof & (nl[:, 2] > 0.5); eave = roof & ~top
+    capside = eave & (np.abs(nl[:, 1]) > 0.5) & (np.abs(ql[:, 1]) < 0.18) & (ql[:, 2] > HW + INST["hr"][ii] - 0.3)   # ridge cap sides
+    top |= capside; eave &= ~capside
     # ---- walls
     f33 = _fade(mpp, 0.33)
     row = np.floor(upz / 0.33); rj = np.mod(upz / 0.33, 1.0)
@@ -1678,7 +1751,10 @@ def house_albedo(ql, which, kind, nl, ii, mpp):
     ridge = sy < 0.16
     rcol = np.where(ridge[:, None], roofc * 0.75, rcol)
     alb = np.where(top[:, None], rcol, alb)
-    alb = np.where(eave[:, None], roofc * 0.45, alb)
+    # roof edges: a weathered timber bargeboard and fascia under tile and slate, a folded metal edge on tin;
+    # in the roof's own colour the sunlit verge read as a bright outline round the roof
+    board = np.array([0.055, 0.05, 0.045]) * (0.85 + 0.3 * tnoise(sx * 1.5 + sd * 3, ql[:, 1] * 1.5, upz * 4))[:, None]
+    alb = np.where(eave[:, None], np.where(tin[:, None], roofc * 0.28, board), alb)
     gutter = top & (sy > B + 0.43)                                           # galvanised gutter along the eaves
     alb = np.where(gutter[:, None], np.array([0.17, 0.17, 0.18]) * (0.8 + 0.4 * tnoise(sx * 2, sd * 9, 1.0))[:, None], alb)
     chim = kind == 2                                                          # chimney: plaster, sooty cap, dark flue
