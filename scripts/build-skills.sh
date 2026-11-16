@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Build the Claude.ai skill packages: dist/procedural-terrain-art.skill and dist/procedural-realism.skill.
+# Build the Claude.ai skill packages: dist/<name>.skill for every folder in skills/.
 #
 # Each .skill is a zip with one top-level folder holding SKILL.md, scripts/, references/ (and assets/ or
-# scenes/). Checks before packaging:
+# scenes/ or studies/). Checks before packaging:
 #   - frontmatter uses only Agent Skills spec fields (Claude Code-only keys fail the Claude.ai upload)
 #   - description is under 1024 characters
 #   - every references/*.md file SKILL.md points at exists
-#   - scripts/dem.py is byte-identical in both skills (it is shared code)
+#   - scripts/dem.py is byte-identical in the two terrain skills (it is shared code)
 # evals/ and caches are left out. Zips are byte-stable (sorted, no extra attributes, no dir entries).
 #
 # Usage: scripts/build-skills.sh [out-dir]   (default: dist/)
@@ -15,7 +15,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out="${1:-$root/dist}"; mkdir -p "$out"; out="$(cd "$out" && pwd)"
 
 a="$root/skills/procedural-terrain-art/scripts/dem.py"; b="$root/skills/procedural-realism/scripts/dem.py"
-cmp -s "$a" "$b" || { echo "scripts/dem.py differs between the two skills; copy one over the other." >&2; exit 1; }
+cmp -s "$a" "$b" || { echo "scripts/dem.py differs between the two terrain skills; copy one over the other." >&2; exit 1; }
 
 forbidden='^(when_to_use|argument-hint|arguments|disable-model-invocation|user-invocable|disallowed-tools|model|effort|context|agent|background|hooks|paths|shell):'
 for dir in "$root"/skills/*/; do

@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Real mountains, glass and paintings made with code and real elevation data. No image model. Two open-source Claude skills.">
+<meta name="description" content="Real mountains, glass and paintings made with code and real elevation data. No image model. Three open-source Claude skills.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="procedural-art: real mountains from elevation data, no image model">
-<meta property="og:description" content="Real elevation data, a physical sky and a path tracer. No image model. Two open-source Claude skills.">
+<meta property="og:description" content="Real elevation data, a physical sky and a path tracer. No image model. Three open-source Claude skills.">
 <meta property="og:image" content="https://dogum.github.io/procedural-art/media/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -80,6 +80,8 @@ h1 .thin{font-weight:600;color:var(--contour)}
 figure{margin:0}
 .frame{position:relative;background:var(--sheet);border-radius:2px;overflow:hidden;box-shadow:0 30px 60px -44px var(--shadow)}
 .frame img{width:100%;aspect-ratio:3/1;object-fit:cover}
+.frame.free img{aspect-ratio:auto}
+.frame video{display:block;width:100%}
 figcaption{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:.72rem;color:var(--muted);padding-top:8px}
 figcaption code{font-family:var(--mono);color:var(--ink)}
 .save{all:unset;cursor:pointer;font-family:var(--mono);font-size:.72rem;color:var(--water);text-decoration:underline;text-underline-offset:3px}
@@ -178,7 +180,7 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
 
 <div class="wrap">
   <header class="hero">
-    <div class="hero-top"><span><b>procedural-art</b> · two Claude skills · no image model</span><nav class="topnav" aria-label="Site"><a href="app/">Any mountain</a><a href="#studios">Studios</a><a href="#install">Install</a><a href="https://github.com/dogum/procedural-art">GitHub</a></nav></div>
+    <div class="hero-top"><span><b>procedural-art</b> · three Claude skills · no image model</span><nav class="topnav" aria-label="Site"><a href="app/">Any mountain</a><a href="#paintings">Paintings</a><a href="#studios">Studios</a><a href="#install">Install</a><a href="https://github.com/dogum/procedural-art">GitHub</a></nav></div>
     <div class="stage">
       <a class="stage-cta" href="app/">Try any mountain <span aria-hidden="true">→</span></a>
       <video id="heroVid" src="media/orbit.mp4" poster="media/orbit_poster.jpg" autoplay muted loop playsinline aria-label="Ararat in the moonlit line style, orbiting slowly"></video>
@@ -186,7 +188,7 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
     <h1>Ararat <span class="thin">&amp; other</span> mountains</h1>
     <div class="thesis">
       <div>
-        <p>Every picture here was computed. Real elevation data, a perspective camera and a few thousand lines of Python produce the line engravings; a ray marcher with a physical sky produces the photographs; a path tracer written from scratch produces the glass. No generative image model touched any pixel. Two Claude skills package all of it, so you can point them at any mountain on Earth.</p>
+        <p>Every picture here was computed. Real elevation data, a perspective camera and a few thousand lines of Python produce the line engravings; a ray marcher with a physical sky produces the photographs; a path tracer written from scratch produces the glass. No generative image model touched any pixel. Three Claude skills package all of it, so you can point them at any mountain on Earth, or ask for an oil painting of anything at all.</p>
         <p class="cta"><a class="btn" href="app/">Try any mountain →</a><span class="note">type a peak, pick a style, save a header. Runs in your browser.</span></p>
       </div>
       <dl class="ledger">
@@ -351,6 +353,39 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
     </section>
 
     <!-- Studios -->
+    <section class="plate" aria-labelledby="p5b" id="paintings">
+      <div class="margin">
+        <span class="pno">Plate VI</span>
+        <h2 id="p5b">Paintings from nothing</h2>
+        <p>No photo, render or model is behind these. A short Python script says what is in the picture and which way the brush moves over each part; a paint simulator lays it as strokes. Colour mixes as pigment (blue into wet yellow goes green), bristles run dry and drag the wet paint they cross, and thick paint catches a raking light.</p>
+        <div class="data">2400 × 1600, ~30,000 strokes: ~70 s<br>12-band Kubelka-Munk pigment mixing<br>wet-into-wet, dry brush, impasto relief<br>films the canvas being painted</div>
+      </div>
+      <div class="main">
+        <figure>
+          <div class="frame free"><img id="ptRain" src="media/pt_rain.jpg" alt="Oil painting of a wet street at blue hour with lamps, lit shop windows and two people under a red umbrella" width="1800" height="1200" loading="lazy"></div>
+          <figcaption><span>Rain at blue hour · composed in under 300 lines of Python</span><a class="save" data-save="ptRain" href="#" download>Save</a></figcaption>
+        </figure>
+        <figure>
+          <div class="frame free"><video src="media/pt_rain.mp4" poster="media/pt_rain.jpg" controls muted loop playsinline preload="none" aria-label="The rain painting building up from a toned canvas"></video></div>
+          <figcaption><span>The same canvas painting itself, one sitting per frame</span></figcaption>
+        </figure>
+        <div class="pair">
+          <figure>
+            <div class="frame free"><img id="ptBarley" src="media/pt_barley.jpg" alt="Oil painting of a barley field with poppies under cumulus clouds" width="1800" height="1200" loading="lazy"></div>
+            <figcaption><span>Wind over the barley</span><a class="save" data-save="ptBarley" href="#" download>Save</a></figcaption>
+          </figure>
+          <figure>
+            <div class="frame free"><img id="ptLemons" src="media/pt_lemons.jpg" alt="Oil painting of lemons and a cobalt-blue jug on linen" width="1500" height="1200" loading="lazy"></div>
+            <figcaption><span>Lemons and a blue jug</span><a class="save" data-save="ptLemons" href="#" download>Save</a></figcaption>
+          </figure>
+        </div>
+        <figure>
+          <div class="frame free"><img id="ptArarat" src="media/pt_ararat.jpg" alt="Ararat and Lesser Ararat painted in oils from real elevation data" width="2000" height="833" loading="lazy"></div>
+          <figcaption><span>Ararat from real elevation, painted by depth · <code>repaint.py --geom</code></span><a class="save" data-save="ptArarat" href="#" download>Save</a></figcaption>
+        </figure>
+      </div>
+    </section>
+
     <section class="plate" aria-labelledby="pst" id="studios">
       <div class="margin">
         <span class="pno">Try it</span>
@@ -374,7 +409,7 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
     <!-- Plate VI: how -->
     <section class="plate" aria-labelledby="p6">
       <div class="margin">
-        <span class="pno">Plate VI</span>
+        <span class="pno">Plate VII</span>
         <h2 id="p6">How it works</h2>
         <p>Two pipelines share one data source. Both skills ship the same <code>dem.py</code>.</p>
       </div>

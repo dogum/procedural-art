@@ -1,5 +1,5 @@
 ---
-description: A request for an image-model prompt. Must not fire either skill.
+description: A request for an image-model prompt. Must not fire any skill.
 tags: [no-trigger]
 max_turns: 5
 timeout_seconds: 180

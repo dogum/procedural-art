@@ -47,3 +47,4 @@ jobs:
           files: |
             dist/procedural-terrain-art.skill
             dist/procedural-realism.skill
+            dist/procedural-painting.skill

@@ -1,5 +1,5 @@
 ---
-description: A question about Blender settings. Must not fire either skill.
+description: A question about Blender settings. Must not fire any skill.
 tags: [no-trigger]
 max_turns: 5
 timeout_seconds: 180

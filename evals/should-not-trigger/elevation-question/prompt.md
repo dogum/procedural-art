@@ -1,5 +1,5 @@
 ---
-description: A factual question about a mountain. Must not fire either skill.
+description: A factual question about a mountain. Must not fire any skill.
 tags: [no-trigger]
 max_turns: 5
 timeout_seconds: 180
