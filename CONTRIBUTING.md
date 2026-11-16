@@ -4,15 +4,15 @@ Thanks for helping. The bar: the skills should make better pictures, stay honest
 
 ## Layout
 
-- `skills/procedural-terrain-art/` and `skills/procedural-realism/`: each has a `SKILL.md` (in context whenever the skill fires, so keep it lean), `references/` (read on demand), and `scripts/`.
-- `skills/*/scripts/dem.py` is shared code and must stay byte-identical in both skills. Edit one, copy it over the other.
+- `skills/procedural-terrain-art/`, `skills/procedural-realism/` and `skills/procedural-painting/`: each has a `SKILL.md` (in context whenever the skill fires, so keep it lean), `references/` (read on demand), and `scripts/`.
+- `skills/*/scripts/dem.py` is shared code and must stay byte-identical in the two terrain skills. Edit one, copy it over the other.
 - `evals/` holds `claude plugin eval` cases; `skills/*/evals/` holds skill-creator evals. `docs/` is the GitHub Pages site. `scripts/` holds the build and the terrain regression sheet.
 
 ## Before you open a PR
 
 ```bash
 pip install -r requirements.txt
-scripts/build-skills.sh                        # both .skill files still build and pass the checks
+scripts/build-skills.sh                        # the .skill files still build and pass the checks
 python scripts/regression_terrain.py --rerender   # if you touched the terrain engine: 7 landforms × 6 styles, one sheet
 claude plugin validate .                       # manifests are valid
 ```
@@ -35,6 +35,6 @@ claude plugin eval . --allow-tools Write Bash
 
 ## Releasing
 
-1. Bump `version` in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `metadata.version` in both `SKILL.md` files.
+1. Bump `version` in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `metadata.version` in every `SKILL.md`.
 2. Add a section to `CHANGELOG.md`.
-3. Tag `vX.Y.Z` and push the tag. The release workflow builds both `.skill` files and creates the GitHub Release with the changelog section as notes.
+3. Tag `vX.Y.Z` and push the tag. The release workflow builds the `.skill` files and creates the GitHub Release with the changelog section as notes.

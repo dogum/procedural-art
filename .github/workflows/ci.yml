@@ -22,7 +22,7 @@ jobs:
           [ "$v1" = "$v2" ] || { echo "plugin.json ($v1) and marketplace.json ($v2) differ"; exit 1; }
           for s in skills/*/SKILL.md; do grep -q "version: \"$v1\"" "$s" || { echo "$s metadata.version != $v1"; exit 1; }; done
 
-      - name: Build both skill packages (frontmatter, references and dem.py checks)
+      - name: Build the skill packages (frontmatter, references and dem.py checks)
         run: scripts/build-skills.sh dist
 
       - name: Web app (docs/app) is built from the current studio engine
@@ -74,6 +74,12 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           python "$GITHUB_WORKSPACE/skills/procedural-realism/scripts/paint.py" --in out/fuji_pbr.png --out out/fuji_watercolor.png --style watercolor --size 600x200
+      - name: A painting from imagination (shipped study, draft size)
+        working-directory: ${{ runner.temp }}
+        run: |
+          SK="$GITHUB_WORKSPACE/skills/procedural-painting"
+          python "$SK/studies/rain_at_blue_hour.py" --height 400 --out out/rain_at_blue_hour.png
+          python "$SK/scripts/repaint.py" --in out/fuji_pbr.png --out out/fuji_repainted.png --height 300
       - uses: actions/upload-artifact@v7
         with:
           name: smoke-renders

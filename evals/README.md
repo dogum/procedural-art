@@ -1,9 +1,9 @@
 # Evals
 
-Behavioural tests for both skills, run with [`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals):
+Behavioural tests for the skills, run with [`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals):
 
 - `should-trigger/`: requests a skill must pick up. Graders check that the right skill fired, that the image file exists, and (with regex checks over the run trace) that it used real coordinates, the right style, the water flags or a JSON scene; an LLM judge then looks at the PNG itself.
-- `should-not-trigger/`: near misses (Blender settings, a Midjourney prompt, a QGIS how-to, a plain fact). Graders assert neither skill fired.
+- `should-not-trigger/`: near misses (Blender settings, a Midjourney prompt, a QGIS how-to, a plain fact). Graders assert no skill fired.
 
 Each case runs with and without the plugin, so the report shows what the skills add.
 

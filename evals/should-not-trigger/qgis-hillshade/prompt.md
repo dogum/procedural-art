@@ -1,5 +1,5 @@
 ---
-description: GIS how-to about hillshade and contours. Must not fire either skill.
+description: GIS how-to about hillshade and contours. Must not fire any skill.
 tags: [no-trigger]
 max_turns: 5
 timeout_seconds: 180

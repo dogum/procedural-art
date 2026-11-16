@@ -4,7 +4,7 @@
 
 **Real mountains, glass and paintings made with code and real elevation data. No image model.**
 
-Two Claude skills. Name any mountain on Earth and get an engraving, a woodcut, a photograph, or a painting of it.
+Three Claude skills. Name any mountain on Earth and get an engraving, a woodcut, a photograph, or a painting of it. Or name any subject and watch it painted in oils, stroke by stroke.
 
 <img src="docs/media/hero-orbit.gif" alt="Ararat drawn in moonlit ridgelines from real elevation data, orbiting slowly" width="840">
 
@@ -19,14 +19,44 @@ Two Claude skills. Name any mountain on Earth and get an engraving, a woodcut, a
 
 ---
 
-It started as an attempt to recreate an AI-generated header of Mount Ararat with math instead of a model, drawn from the real mountain's elevation. From there it grew into two skills:
+It started as an attempt to recreate an AI-generated header of Mount Ararat with math instead of a model, drawn from the real mountain's elevation. From there it grew into three skills:
 
 | Skill | What it makes |
 |---|---|
 | **[procedural-terrain-art](skills/procedural-terrain-art)** | Any real mountain, range, canyon or island in six print styles, looping orbit videos, and a self-contained interactive studio page. |
 | **[procedural-realism](skills/procedural-realism)** | Photographic terrain (sky, haze, snow, lakes, forests, city lights, sun timelapses), a path tracer for glass and metal still lifes, and a painterly finisher for any image. |
 
+| **[procedural-painting](skills/procedural-painting)** | An original oil painting of any subject, composed in code and laid as simulated brush strokes with real pigment mixing and impasto, plus a film of the canvas being painted. |
+
 Every terrain pixel comes from SRTM-derived elevation, numpy and physics. Nothing is downloaded except elevation tiles, and no generative model is involved at any step.
+
+## Paintings from nothing
+
+<img src="docs/media/pt_rain.jpg" alt="Oil painting of a wet street at blue hour: lamps, lit shop windows reflected in the road, two people under a red umbrella" width="840">
+
+No photo, no render and no model is behind this picture. Claude wrote [under 300 lines of Python](skills/procedural-painting/studies/rain_at_blue_hour.py) that say what is in it (two rows of houses running to a vanishing point, nine lamps, a mirror of all of it in the wet road, two figures and an umbrella) and which way the brush moves over each part. A paint simulator did the rest in 32,000 strokes and 70 seconds on one CPU core.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/pt_rain_process.gif" alt="The rain painting building up from a toned canvas: lay-in, sky, houses, street, lights, figures"><br>The same canvas painting itself (<a href="https://dogum.github.io/procedural-art/media/pt_rain.mp4">mp4</a>)</td>
+<td width="50%"><img src="docs/media/pt_rain_detail.jpg" alt="Detail at full size: bristle tracks, canvas weave and thick paint on the umbrella and shop windows"><br>Detail at 1:1: bristle tracks, canvas weave, thick lights</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/media/pt_barley.jpg" alt="Oil painting of a barley field with poppies under towering cumulus clouds, poplars and a red-roofed farm on the horizon"><br><a href="skills/procedural-painting/studies/wind_over_the_barley.py">Wind over the barley</a></td>
+<td width="50%"><img src="docs/media/pt_lemons.jpg" alt="Oil painting of lemons and a cobalt-blue jug on a linen cloth"><br><a href="skills/procedural-painting/studies/lemons_and_blue_jug.py">Lemons and a blue jug</a></td>
+</tr>
+</table>
+
+What the paint does:
+
+- **Colour mixes like pigment.** Every colour is a 12-band reflectance spectrum and mixing happens on Kubelka-Munk absorption and scattering. Blue dragged into wet yellow goes green; in RGB it goes grey.
+- **Strokes are bristles.** Each bristle track carries its own paint, runs dry toward the end of the stroke, skips the valleys of the canvas weave, and drags the wet paint it crosses.
+- **Paint has thickness.** Stroke bodies, ridges and bristle grooves build a relief that is lit from the side, with thick paint only in the lights.
+- **The brush knows what it is painting.** Direction, size and edge are chosen per mass: sweeps across a sky, upright pulls down a wall, reflections dragged straight down and then cut across.
+
+The same engine paints the real mountains. With the depth of every pixel from the terrain renderer, the sky goes in first as one swept mass and the mountain is drawn over it:
+
+<img src="docs/media/pt_ararat.jpg" alt="Ararat and Lesser Ararat over the plain, painted in oils from the real elevation data" width="840">
 
 ## Any mountain, in your browser
 
@@ -125,11 +155,11 @@ A Monte Carlo path tracer in plain numpy. Scenes are small JSON files: spheres, 
 /plugin install procedural-art@procedural-art
 ```
 
-Both skills install together. Updates arrive with `/plugin update`.
+All three skills install together. Updates arrive with `/plugin update`.
 
 ### Claude.ai, Cowork, cloud sessions
 
-1. Download `procedural-terrain-art.skill` and `procedural-realism.skill` from the [latest release](https://github.com/dogum/procedural-art/releases/latest).
+1. Download `procedural-terrain-art.skill`, `procedural-realism.skill` and `procedural-painting.skill` from the [latest release](https://github.com/dogum/procedural-art/releases/latest).
 2. Open Claude.ai → Settings → Capabilities → Skills.
 3. Upload each file. Re-upload to update.
 
@@ -138,7 +168,7 @@ Both skills install together. Updates arrive with `/plugin update`.
 ```bash
 git clone https://github.com/dogum/procedural-art.git
 mkdir -p ~/.claude/skills
-cp -r procedural-art/skills/procedural-terrain-art procedural-art/skills/procedural-realism ~/.claude/skills/
+cp -r procedural-art/skills/procedural-* ~/.claude/skills/
 pip install -r procedural-art/requirements.txt
 ```
 
@@ -157,6 +187,8 @@ Once installed, just ask. The skills look up the summit and a real viewpoint, fe
 - *"Sunset timelapse of Kilimanjaro from Amboseli, into the night."*
 - *"A glass of whiskey with two ice cubes on walnut, window light. No Blender."*
 - *"Turn this photo into a watercolour."*
+- *"Paint a fishing harbour at dawn in oils, from code, and show me the film of it being painted."*
+- *"An oil still life of pears and a copper pot. No image model."*
 
 Or run the scripts yourself. From any writable folder, with `SK` pointing at the installed skill:
 
@@ -184,6 +216,8 @@ The Ararat studio is also on [Artifact Shelf](https://dogum.github.io/artifact-s
 
 **Photographs.** Each pixel's ray marches a 40 m heightfield (with Earth curvature) until it hits ground, then asks the sky how much light reaches that point and how much air lies between it and the camera. Near-field instances (water, trees, houses, lights) are traced separately. Renders run in resumable row bands. [Terrain features](skills/procedural-realism/references/terrain_features.md) · [What we learned](skills/procedural-realism/references/lessons.md).
 
+**Paintings.** A study script computes the picture in flat colour with numpy (gradients, signed-distance shapes, light and shadow) and gives each mass a brush direction. The simulator seeds strokes inside each mass, traces them along that direction, and rasterises each as a ribbon of bristle tracks that mix with the wet paint beneath in pigment space; a height field of the paint is lit at the end. [Canvas API and internals](skills/procedural-painting/references/atelier.md).
+
 **Glass.** Unidirectional path tracing with next-event estimation, MIS, Russian roulette, Fresnel and Beer-Lambert absorption, spectral dispersion, and an adaptive sampler that spends samples where noise is high. [Scene format](skills/procedural-realism/references/scenes.md).
 
 ## Performance
@@ -199,10 +233,11 @@ One CPU core:
 | Timelapse, 20 s at 1200 × 400, every frame rendered | ~2 hours on 4 cores, ~6 on one (resumable; `--blend 2` halves it) |
 | Clean still life, 2400 × 800 | ~1 hour (resumable) |
 | Painting, 3000 × 1000 | 10–60 s |
+| Original oil painting, 2400 × 1600, about 30k strokes | 70–90 s (10–15 s for an 800 px draft) |
 
 ## Limits
 
-What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. The skills say so when a request lands there.
+What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures work as simple shapes at a distance, while faces, hands and likenesses do not. The skills say so when a request lands there.
 
 ## Repository layout
 
@@ -211,12 +246,13 @@ What works and what doesn't: light, atmosphere, glass, metal and real terrain at
 skills/
   procedural-terrain-art/     SKILL.md, scripts/, references/, assets/studio_template.html, evals/
   procedural-realism/         SKILL.md, scripts/, references/, scenes/*.json, evals/
+  procedural-painting/        SKILL.md, scripts/atelier.py (the paint simulator), studies/*.py (finished paintings), references/
 evals/                        claude plugin eval cases (should-trigger, should-not-trigger)
 docs/                         GitHub Pages: the showcase, the Any mountain app (docs/app), five studios, media
 scripts/                      build-skills.sh (the Claude.ai packages), build-app.py (docs/app/engine.js), regression_terrain.py
 ```
 
-Both skills ship the same `scripts/dem.py`; the build refuses to package them if the copies differ.
+The two terrain skills ship the same `scripts/dem.py`; the build refuses to package them if the copies differ.
 
 ## Evals
 

@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Versions follow [semant
 
 ## [Unreleased]
 
+### procedural-painting (new skill)
+- Original oil paintings of any subject, composed in code. A study script describes the picture in flat colour (numpy gradients and signed-distance shapes) and gives each mass a brush direction; `scripts/atelier.py` lays it as brush strokes on a toned canvas, back to front, big brushes first.
+- Pigment mixing: colours are 12-band reflectance spectra mixed on Kubelka-Munk absorption and scattering, so blue into wet yellow goes green and complements grey each other.
+- Bristle strokes that run dry, catch on the canvas weave (dry brush) and drag the wet paint they cross (wet-into-wet); paint relief with ridges and bristle grooves under a raking light; single drawn marks (`marks`), transparent glazes, and a process film of the canvas being painted (`film`).
+- Three finished studies: `rain_at_blue_hour.py`, `wind_over_the_barley.py`, `lemons_and_blue_jug.py`. About 30k strokes and 70–90 s at 2400×1600 on one core.
+- `scripts/repaint.py` repaints an existing image with the same paint. With `--geom` (the geometry cache of a `pbr_terrain.py --geom-cache` render) it paints a real mountain by depth: the sky as one swept mass, far ground kept simple, near ground in broken colour, the skyline as a found edge.
+
 ### Web app
 - A mountain picked from the OpenStreetMap suggestions gets its surveyed elevation (OSM `ele`) and native name: Photon search carries neither, so one Nominatim lookup by OSM id fills them in while the elevation tiles load. The label, caption and share link show the surveyed height instead of the elevation-data estimate. `ele` values in feet are converted.
 
