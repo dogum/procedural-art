@@ -222,7 +222,8 @@
       for (let i = 0; i < n; i++) this._lin(i);
       this.opI = 0; this.sitI = 0; this.sitLeft = -1; this.strokeI = 0; this.done = 0; this.serial = 0;
       this.owner.fill(-1); this.stale.fill(1); this.dirty.fill(1);
-      this.finished = tape.strokes === 0;
+      this.finished = false;
+      if (tape.strokes === 0) this._drain();
     }
 
     _lin(i) {
@@ -264,9 +265,21 @@
         }
         this._stroke(op, this.strokeI++);
         this.sitLeft--; this.done++;
-        if (this.done >= this.tape.strokes) this.finished = true;
+        if (this.done >= this.tape.strokes) this._drain();
         return;
       }
+    }
+
+    /** After the last stroke: apply whatever follows it on the tape (a final glaze, a dry). */
+    _drain() {
+      const ops = this.tape.ops;
+      for (; this.opI < ops.length; this.opI++) {
+        const op = ops[this.opI];
+        if (op.op === 'dry') { const k = 1 - op.amount, w = this.wet; for (let i = 0; i < w.length; i++) w[i] *= k; }
+        else if (op.op === 'glaze') this._glaze(op);
+      }
+      this.stale.fill(1);
+      this.finished = true;
     }
 
     /** Every stroke of a sitting sees the canvas as it was when the sitting began. */
