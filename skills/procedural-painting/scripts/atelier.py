@@ -687,7 +687,7 @@ class Painting:
 
     def marks(self, lines, color, size=0.006, mask=None, load=1.2, opacity=1.0, pickup=0.15, dry=0.0, jitter=0.03,
               hue=0.02, marble=0.3, thickness=1.5, taper=0.3, soft=0.05, wobble=0.0, knife=False, shape=None,
-              name=None):
+              name=None, _at=None):
         """Deliberate single strokes: each line is a list of (x, y) points in picture units and is
         drawn once, in order (a mast, a branch, a signature). `color` is one colour for all, a list
         with one colour per line, or an H x W x 3 field sampled at each line's start. `size` may
@@ -725,18 +725,20 @@ class Painting:
                 pos[i, len(r):] = r[-1] + d[None] * np.arange(1, K - len(r) + 1)[:, None]
         Li = np.asarray(Ls, F32)
         if isinstance(color, (list, tuple)) and len(color) == N and (isinstance(color[0], str) or np.ndim(color[0]) == 1):
-            scol = np.stack([rgb(c) for c in color]).astype(F32)
+            scol, at = np.stack([rgb(c) for c in color]).astype(F32), None
         elif not isinstance(color, str) and np.ndim(color) == 3:
-            jx = np.clip(pos[:, 0, 0], 0, W - 1).astype(int)
-            jy = np.clip(pos[:, 0, 1], 0, H - 1).astype(int)
+            at = pos[:, 0] if _at is None else np.asarray(_at, F32)       # where each mark reads its colour
+            jx = np.clip(at[:, 0], 0, W - 1).astype(int)
+            jy = np.clip(at[:, 1], 0, H - 1).astype(int)
             scol = np.asarray(color, F32)[jy, jx]
         else:
+            at = None
             scol = np.broadcast_to(rgb(color), (N, 3)).astype(F32)
         m = np.ones((H, W), F32) if mask is None else np.clip(self._field(mask), 0, 1)
         self._deposit(pos, step, wi, Li, scol, m, dict(load=load, opacity=opacity, pickup=pickup, dry=dry,
                       marble=marble, clip=0.0 if mask is None else 1.0, thickness=thickness, taper=taper,
-                      soft=soft, knife=bool(knife), shape=shape or ('knife' if knife else 'brush')),
-                      jitter, hue, batches=None)
+                      soft=soft, knife=bool(knife), shape=shape or ('knife' if knife else 'brush'),
+                      field=at is not None), jitter, hue, batches=None, at=at)
         self.n_strokes += N
         if self._log:
             print(f"  {name or 'marks':<18s} brush {float(wi.mean()):6.1f}px  {N:6d} marks", flush=True)
@@ -755,10 +757,8 @@ class Painting:
         ang = self.rng.uniform(0, TAU, n) if angle is None else np.broadcast_to(np.asarray(angle, F32), (n,))
         half = 0.5 * sz * np.broadcast_to(np.asarray(stretch, F32), (n,))
         d = np.stack([np.cos(ang), np.sin(ang)], -1) * half[:, None]
-        if not isinstance(color, str) and np.ndim(color) == 3:          # sample the study at the centre
-            jx = np.clip(pts[:, 0] * self.H, 0, self.W - 1).astype(int)
-            jy = np.clip(pts[:, 1] * self.H, 0, self.H - 1).astype(int)
-            color = [c for c in np.asarray(color, F32)[jy, jx]]
+        if not isinstance(color, str) and np.ndim(color) == 3:          # the study is read at each dab's centre
+            kw['_at'] = pts * self.H
         return self.marks([[p_ - d_, p_ + d_] for p_, d_ in zip(pts, d)], color, size=list(sz), load=load,
                           pickup=pickup, thickness=thickness, soft=soft, jitter=jitter, hue=hue, taper=0.0,
                           shape='round', name=name or 'dabs', **kw)
@@ -785,7 +785,7 @@ class Painting:
         col = gu * scale_u * self.H * 0.02 + shear * row + 0.5 * self.W
         return ndi.map_coordinates(tex, [row % (2 * self.H), col % (2 * self.W)], order=1, mode='mirror').astype(F32)
 
-    def _deposit(self, pos, step, wi, Li, scol, mask, k, jitter, hue, batches):
+    def _deposit(self, pos, step, wi, Li, scol, mask, k, jitter, hue, batches, at=None):
         """Lay traced strokes: batches=None keeps the given order (one sitting per stroke budget)."""
         rng = self.rng
         N = len(wi)
@@ -827,7 +827,7 @@ class Painting:
                 lo = (np.clip(mask[::st, ::st], 0, 1) * 255).astype(np.uint8)
             self.tape.append(dict(op='strokes', H=self.H, W=self.W, pos=pos.copy(), step=float(step), width=wi.copy(),
                                   length=Li.copy(), c1=c1.copy(), c2=c2.copy(), runout=runout, offs=offs,
-                                  seed=np.asarray(scol, F32).copy(),
+                                  seed=np.asarray(scol, F32).copy(), at=None if at is None else np.asarray(at, F32).copy(),
                                   clip_full=mask if (self._tape_full and k['clip'] > 0) else None,
                                   sittings=[g.copy() for g in groups], params=dict(k), clip_mask=lo))
         for g in groups:
@@ -1027,8 +1027,9 @@ class Painting:
             k = dict(r['params'])
             c1, c2, pos = r['c1'], r['c2'], r['pos']
             if study is not None and k.get('field'):
-                ix = np.clip(pos[:, 0, 0], 0, self.W - 1).astype(int)
-                iy = np.clip(pos[:, 0, 1], 0, self.H - 1).astype(int)
+                at = r['at'] if r.get('at') is not None else pos[:, 0]
+                ix = np.clip(at[:, 0], 0, self.W - 1).astype(int)
+                iy = np.clip(at[:, 1], 0, self.H - 1).astype(int)
                 now = np.asarray(study, F32)[iy, ix]
                 was = r['seed']
                 g = np.clip((now @ lum + 0.08) / (was @ lum + 0.08), 0.3, 1.6)[:, None]

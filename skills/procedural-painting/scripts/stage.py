@@ -28,7 +28,7 @@ from PIL import Image
 from atelier import F32, rgb, lerp, smoothstep, blur, along
 
 __all__ = ['Scene', 'Camera', 'Buffers', 'sphere', 'ellipsoid', 'box', 'capsule', 'cylinder', 'cone', 'torus',
-           'plane', 'lathe', 'figure', 'POSES', 'paint', 'masses', 'load_pathtracer_scene', 'planks', 'mottle']
+           'plane', 'lathe', 'drape', 'figure', 'POSES', 'paint', 'masses', 'load_pathtracer_scene', 'planks', 'mottle']
 
 
 # ----------------------------------------------------------------------------------------
@@ -66,9 +66,13 @@ class Prim:
         self.lip = lip
         self.plain = bool(np.allclose(self.R, np.eye(3)))
 
-    def sd(self, P):
+    def raw(self, P):
+        """The shape's own distance, which may overstate how far away a bent or squashed surface is."""
         q = P - self.c
-        return self.fn(q if self.plain else q @ self.R) * self.lip
+        return self.fn(q if self.plain else q @ self.R)
+
+    def sd(self, P):
+        return self.raw(P) * self.lip
 
 
 def sphere(center, r):
@@ -173,6 +177,7 @@ class Thing:
         self.f0 = None if f0 is None else np.asarray(f0, F32)
         self.ior = ior                                     # glass only: 1 = thin-walled, shows what is behind unbent
         self.is_plane = any(p.radius is None for p in self.parts)
+        self.lip = float(min(1.0, min(p.lip for p in self.parts)))     # parts melt in their own distances; the whole is made safe to march
         if not self.is_plane:
             cs = np.stack([p.c for p in self.parts])
             c = cs.mean(0)
@@ -181,19 +186,42 @@ class Thing:
             self.bound = None
 
     def sd(self, P, which=False):
-        ds = [p.sd(P) for p in self.parts]
-        d = ds[0]
-        for e in ds[1:]:
-            if self.k > 0:
-                h = np.clip(0.5 + 0.5 * (e - d) / self.k, 0, 1)
-                d = e + (d - e) * h - self.k * h * (1 - h)
-            else:
-                d = np.minimum(d, e)
-        for c in self.cut:
-            d = np.maximum(d, -c.sd(P))
         if which:
-            return d, np.argmin(np.stack(ds), 0)
-        return d
+            ds = [p.raw(P) for p in self.parts]
+            d = ds[0]
+            for e in ds[1:]:
+                d = self._join(d, e)
+            for c in self.cut:
+                d = np.maximum(d, -c.sd(P))
+            return d * self.lip, np.argmin(np.stack(ds), 0)
+        # a part is only worked out where it could change the answer: where its bounding sphere
+        # comes nearer than the distance found so far (plus the width of the melt)
+        d = self.parts[0].raw(P)
+        for p in self.parts[1:]:
+            if p.radius is None or len(self.parts) < 4:
+                d = self._join(d, p.raw(P))
+                continue
+            q = P - p.c
+            near = (np.sqrt((q * q).sum(-1)) - p.radius) * min(p.lip, 1.0) < d + self.k
+            if near.all():
+                d = self._join(d, p.raw(P))
+            elif near.any():
+                d[near] = self._join(d[near], p.raw(P[near]))
+        for c in self.cut:
+            if c.radius is None:
+                d = np.maximum(d, -c.sd(P))
+                continue
+            q = P - c.c
+            near = (np.sqrt((q * q).sum(-1)) - c.radius) * min(c.lip, 1.0) < -d
+            if near.any():
+                d[near] = np.maximum(d[near], -c.sd(P[near]))
+        return d * self.lip
+
+    def _join(self, d, e):
+        if self.k > 0:
+            h = np.clip(0.5 + 0.5 * (e - d) / self.k, 0, 1)
+            return e + (d - e) * h - self.k * h * (1 - h)
+        return np.minimum(d, e)
 
 
 class Camera:
@@ -296,12 +324,18 @@ class Scene:
 
     def _sd(self, things, P, masks, idx):
         d = np.full(len(P), 1e9, F32)
-        for t, m in zip(things, masks):
+        for t, m in zip(things, masks):                      # the unbounded things first: they are cheap
             if m is None:
                 d = np.minimum(d, t.sd(P))
-            else:
-                sub = m[idx]
-                if sub.any():
+        for t, m in zip(things, masks):
+            if m is None:
+                continue
+            sub = m[idx]
+            if sub.any():                                    # only where its bounding sphere is nearer than what is found
+                q = P[sub] - t.bound[0]
+                near = np.sqrt((q * q).sum(-1)) - t.bound[1] < d[sub]
+                if near.any():
+                    sub = np.flatnonzero(sub)[near]
                     d[sub] = np.minimum(d[sub], t.sd(P[sub]))
         return d
 
@@ -312,6 +346,8 @@ class Scene:
         hit = np.zeros(N, bool)
         idx = np.arange(N)
         eps = 0.0012 * self.scale
+        # folded cloth is marched in shorter steps (its lip), so it is given more of them
+        steps = int(min(300, steps / max(min([th.lip for th in things] or [1.0]), 0.3)))
         for _ in range(steps):
             if len(idx) == 0:
                 break
@@ -321,6 +357,11 @@ class Scene:
             hit[idx[h]] = True
             t[idx] += np.maximum(d, eps * 0.5) * 0.9
             idx = idx[~h & (t[idx] < tmax)]
+        idx = np.flatnonzero(hit)                            # settle each hit onto the surface itself: no terraces in the shading
+        for _ in range(3):
+            if len(idx) == 0:
+                break
+            t[idx] += self._sd(things, O[idx] + t[idx, None] * D[idx], masks, idx)
         return t, hit, masks
 
     def _shadow(self, things, P, n, L, tmax):
@@ -332,12 +373,12 @@ class Scene:
         t = np.full(N, 0.01 * self.scale, F32)
         res = np.ones(N, F32)
         idx = np.arange(N)
-        for _ in range(40):
+        for _ in range(64):
             if len(idx) == 0:
                 break
             d = self._sd(things, O[idx] + t[idx, None] * D[idx], masks, idx)
             res[idx] = np.minimum(res[idx], self.soft * d / t[idx])
-            t[idx] += np.maximum(d, 0.004 * self.scale)
+            t[idx] += np.maximum(d * 0.6, 0.004 * self.scale)       # short steps: a penumbra without bands
             idx = idx[(res[idx] > 0.01) & (t[idx] < tmax)]
         return np.clip(res, 0, 1)
 
@@ -417,7 +458,7 @@ class Scene:
         lamn = np.clip(np.abs(lam) / 0.72, 0, 1) ** 0.85 * np.sign(lam)
         l = np.where(lit_side, lamn * sh - (1 - sh) * 0.08, lamn)
         core = base * self.shadow
-        c = lerp(core, base * 0.74, smoothstep(-0.05, 0.28, l))
+        c = lerp(core, base * 0.74, smoothstep(-0.16, 0.30, l))                     # the turn into shadow: a soft edge on a round form
         c = lerp(c, np.clip(base * self.key_color * 1.22 + 0.02, 0, 1), smoothstep(0.2, 0.8, l))
         dark = 1 - smoothstep(0.0, 0.35, l)
         up = n[:, 1] * 0.5 + 0.5
@@ -590,28 +631,72 @@ POSES = {
     'sit': dict(sit=True, lean=4, hip_l=84, hip_r=84, knee_l=86, knee_r=86, shoulder_l=14, shoulder_r=14, elbow_l=50,
                 elbow_r=50),
     'read': dict(sit=True, lean=12, hip_l=82, hip_r=86, knee_l=80, knee_r=90, shoulder_l=30, shoulder_r=34, elbow_l=98,
-                 elbow_r=96, abduct_l=6, abduct_r=6, head_pitch=30),
+                 elbow_r=96, abduct_l=6, abduct_r=6, head_pitch=30, grip_l=46, grip_r=46),
     'reach': dict(lean=6, shoulder_r=128, elbow_r=10, abduct_r=10, shoulder_l=-8, elbow_l=14, hip_l=8, hip_r=-8,
                   knee_l=4, head_pitch=-14),
-    'carry': dict(lean=-3, shoulder_l=24, shoulder_r=24, elbow_l=88, elbow_r=88, hip_l=14, knee_l=10, hip_r=-10,
+    'carry': dict(lean=-3, shoulder_l=24, shoulder_r=24, elbow_l=88, elbow_r=88, grip_l=60, grip_r=60, hip_l=14, knee_l=10, hip_r=-10,
                   knee_r=12),
 }
 
 
+def drape(a, b, r0, r1=None, folds=0, depth=0.0, depth_end=None, rings=0.0, ring_depth=0.0, ring_at=0.5,
+          ring_span=0.3, phase=0.0, up=(0, 1, 0)):
+    """Cloth over a limb or hanging from a waist: a capsule from a to b (radius r0 to r1) with
+    `folds` lengthwise folds whose depth grows from `depth` at a to `depth_end` at b (a skirt's
+    hem), and `rings` crosswise creases of `ring_depth` gathered round `ring_at` (0..1 along the
+    limb: an elbow, a knee, a trouser break), spread over `ring_span`."""
+    a, b = np.asarray(a, F32), np.asarray(b, F32)
+    r1 = r0 if r1 is None else r1
+    depth_end = depth if depth_end is None else depth_end
+    ba = b - a
+    L2 = float(ba @ ba) + 1e-12
+    L = float(np.sqrt(L2))
+    ax = ba / L
+    u = np.cross(np.asarray(up, F32), ax)
+    if np.linalg.norm(u) < 0.2:
+        u = np.cross(np.array([1, 0, 0], F32), ax)
+    u = (u / np.linalg.norm(u)).astype(F32)
+    v = np.cross(ax, u).astype(F32)
+    tau = 2 * np.pi
+
+    def fn(q):
+        h = np.clip((q @ ba) / L2, 0, 1)
+        d = np.sqrt(((q - ba * h[:, None]) ** 2).sum(-1)) - (r0 + (r1 - r0) * h)
+        phi = np.arctan2(q @ v, q @ u)
+        if folds and (depth or depth_end):
+            w = np.sin(folds * phi + phase + 0.7 * np.sin(2 * phi + 1.3 * phase))
+            d = d - (depth + (depth_end - depth) * h) * (w * (0.6 + 0.4 * w) - 0.5)       # round ridges, tighter valleys
+        if rings and ring_depth:
+            g = np.exp(-((h - ring_at) / ring_span) ** 2)
+            d = d - ring_depth * g * np.sin(tau * rings * h + 1.4 * np.sin(phi + phase) + phase)
+        return d
+    rmin = max(min(r0, r1), 1e-6)
+    steep = max(depth, depth_end) * 1.4 * folds / rmin + ring_depth * (tau * rings / L + 1.4 / rmin) + abs(r1 - r0) / L
+    return Prim(fn, a, np.eye(3), L + max(r0, r1) + max(depth, depth_end) + ring_depth, ax, lip=1 / np.sqrt(1 + steep * steep))
+
+
 def figure(scene, name, at=(0, 0, 0), facing=0.0, height=1.7, pose='stand', skin='#c99a7a', hair='#3a2a22',
            top='#4a5878', bottom='#2e2c34', shoes='#1e1a18', skirt=False, coat=False, hat=None, build=1.0,
-           seat=None, importance=1.4, **joints):
+           seat=None, importance=1.4, hair_style='short', face=True, cloth=1.0, **joints):
     """A posable figure standing on `at` (the point between the feet; for a sitting pose, the point
     on the floor under the pelvis). facing: degrees about the vertical, 0 = looking along +z (away
     from a camera that looks along +z), 180 = toward it, 90 = toward +x. pose: a name from POSES or
     a dict of joint angles; keyword joints override it (hip_l, knee_r, shoulder_l, elbow_r,
-    abduct_l, lean, head_yaw, head_pitch, ...). skirt, coat: clothing volumes; hat: a colour.
-    seat: height of the seat for sitting poses (default 0.26 of the height).
-    Adds the objects name.skin, name.hair, name.top, name.bottom, name.shoes (and name.hat) and
-    returns the joint positions, e.g. j['hand_l'], j['head'], j['lap'] to put things in hands."""
-    J = dict(lean=0, twist=0, head_yaw=0, head_pitch=0, sit=False)
+    abduct_l, lean, head_yaw, head_pitch, head_tilt, and for the hands palm_l (0 = thumb leading,
+    90 = palm turned down or back), grip_l (how far the fingers curl, 0..100) and wrist_l (bend
+    toward the palm)). skirt, coat: clothing volumes; hat: a colour. hair_style: 'short', 'bob',
+    'bun', 'long' or None. face=False leaves the head a plain egg (a far-off figure). cloth: how
+    deep the folds in the clothes are (0 = smooth tubes). seat: height of the seat for sitting
+    poses (default 0.26 of the height).
+    Adds the objects name.skin (head and neck), name.skin.hand_l, name.skin.hand_r, name.hair,
+    name.top, name.bottom, name.shoes (with a face also name.eyes, name.brows, name.lips; and
+    name.hat) and returns the joints: j['head'], j['hand_l'], j['lap'], ... and for holding things
+    j['grip_l'] (a point in the curl of the fingers), j['palm_l'] (the way the palm faces),
+    j['thumb_l'] (the way the thumb side points) and j['fingers_l'] (the way the hand points)."""
+    J = dict(lean=0, twist=0, head_yaw=0, head_pitch=0, head_tilt=0, sit=False)
     for s in 'lr':
-        J.update({f'hip_{s}': 0, f'knee_{s}': 0, f'shoulder_{s}': 0, f'elbow_{s}': 6, f'abduct_{s}': 4, f'leg_out_{s}': 0})
+        J.update({f'hip_{s}': 0, f'knee_{s}': 0, f'shoulder_{s}': 0, f'elbow_{s}': 6, f'abduct_{s}': 4, f'leg_out_{s}': 0,
+                  f'palm_{s}': 0, f'grip_{s}': 24, f'wrist_{s}': 0})
     J.update(POSES[pose] if isinstance(pose, str) else pose)
     J.update(joints)
     Hh, b = height, build
@@ -621,6 +706,9 @@ def figure(scene, name, at=(0, 0, 0), facing=0.0, height=1.7, pose='stand', skin
 
     def W_(v):
         return at + F @ np.asarray(v, F32)
+
+    def D_(v):                                               # a direction, local -> world
+        return F @ np.asarray(v, F32)
 
     def rx(deg):                                             # + swings a hanging limb forward (+z)
         a = np.radians(deg)
@@ -633,7 +721,11 @@ def figure(scene, name, at=(0, 0, 0), facing=0.0, height=1.7, pose='stand', skin
     def ry(deg):
         a = np.radians(deg)
         return np.array([[np.cos(a), 0, np.sin(a)], [0, 1, 0], [-np.sin(a), 0, np.cos(a)]], F32)
+
+    def frame(x_, y_, z_):                                   # a rotation whose local axes are these directions
+        return np.stack([D_(x_), D_(y_), D_(z_)], 1).astype(F32)
     down = np.array([0, -1, 0], F32)
+    cl = 3.0 * float(cloth) * Hh
     thigh, shin, hipw = 0.245 * Hh, 0.245 * Hh, 0.052 * Hh * b
     if J['sit']:
         pel_y = (seat if seat is not None else 0.26 * Hh) + 0.055 * Hh
@@ -644,46 +736,128 @@ def figure(scene, name, at=(0, 0, 0), facing=0.0, height=1.7, pose='stand', skin
         pel_y = reach + 0.045 * Hh
     pel = np.array([0, pel_y, 0], F32)
     T = rx(-J['lean'])                                       # the trunk's frame: + lean tips it forward
-    Hm = T @ ry(J['head_yaw']) @ rx(-J['head_pitch'])        # the head's frame: + pitch bows it
+    Hm = T @ ry(J['head_yaw']) @ rx(-J['head_pitch']) @ rz(J['head_tilt'])       # the head's frame: + pitch bows it
     spine = T @ np.array([0, 1, 0], F32)
     chest = pel + spine * 0.30 * Hh
-    neck = chest + spine * 0.055 * Hh
+    neck = chest + spine * 0.064 * Hh
     hd = Hm @ np.array([0, 1, 0], F32)
     hfw = Hm @ np.array([0, 0, 1], F32)
     head = neck + spine * 0.035 * Hh + hd * 0.062 * Hh
     j = dict(pelvis=W_(pel), chest=W_(chest), neck=W_(neck), head=W_(head))
+    Rh = F @ Hm
+
+    def hp(x_, y_, z_):                                      # a point in the head's own frame (right, up, forward)
+        return W_(head + Hm @ (np.array([x_, y_, z_], F32) * Hh))
     skin_p, top_p, bot_p, shoe_p, hair_p = [], [], [], [], []
+    kw = dict(importance=importance)
     # trunk
-    top_p += [ellipsoid(W_(chest - spine * 0.035 * Hh), (0.122 * Hh * b, 0.105 * Hh, 0.066 * Hh * b), F @ T),
-              capsule(W_(pel + spine * 0.04 * Hh), W_(chest - spine * 0.02 * Hh), 0.074 * Hh * b, 0.082 * Hh * b)]
+    top_p += [ellipsoid(W_(chest - spine * 0.035 * Hh), (0.108 * Hh * b, 0.105 * Hh, 0.060 * Hh * b), F @ T),
+              drape(W_(pel + spine * 0.04 * Hh), W_(chest - spine * 0.02 * Hh), 0.074 * Hh * b, 0.080 * Hh * b, folds=4,
+                    depth=0.0007 * cl, depth_end=0.0002 * cl, rings=1.6, ring_depth=0.0022 * cl, ring_at=0.25, ring_span=0.3,
+                    phase=0.8, up=D_((0, 0, 1))),
+              ellipsoid(W_(chest + spine * 0.022 * Hh), (0.098 * Hh * b, 0.030 * Hh, 0.046 * Hh * b), F @ T),   # the slope of the shoulders
+              torus(W_(neck - spine * 0.030 * Hh), 0.029 * Hh, 0.0055 * Hh, F @ T)]                      # a collar
     bot_p += [ellipsoid(W_(pel), (0.098 * Hh * b, 0.075 * Hh, 0.072 * Hh * b), F @ rx(-J['lean'] * 0.5))]
-    skin_p += [capsule(W_(neck - spine * 0.02 * Hh), W_(neck + spine * 0.04 * Hh), 0.028 * Hh, 0.026 * Hh),
-               ellipsoid(W_(head), (0.045 * Hh, 0.064 * Hh, 0.054 * Hh), F @ Hm)]
-    skin_p += [ellipsoid(W_(head + hfw * 0.05 * Hh - hd * 0.012 * Hh), (0.011 * Hh, 0.017 * Hh, 0.014 * Hh), F @ Hm)]   # nose
-    hair_p += [ellipsoid(W_(head + hd * 0.016 * Hh - hfw * 0.02 * Hh), (0.048 * Hh, 0.058 * Hh, 0.050 * Hh),
-                         F @ Hm)]
+    # head and neck
+    skull_base = head - hd * 0.030 * Hh - hfw * 0.012 * Hh
+    skin_p += [capsule(W_(neck - spine * 0.035 * Hh), W_(skull_base), 0.0235 * Hh, 0.0200 * Hh)]
+    eyes_p, brow_p, lips_p, sockets = [], [], [], []
+    if face:
+        skin_p += [ellipsoid(hp(0, 0.012, -0.008), (0.044 * Hh, 0.050 * Hh, 0.054 * Hh), Rh),            # the cranium
+                   ellipsoid(hp(0, -0.022, 0.012), (0.0365 * Hh, 0.045 * Hh, 0.038 * Hh), Rh),           # the face
+                   ellipsoid(hp(0, -0.055, 0.0335), (0.015 * Hh, 0.012 * Hh, 0.013 * Hh), Rh),           # the chin
+                   capsule(hp(-0.021, 0.011, 0.040), hp(0.021, 0.011, 0.040), 0.0085 * Hh),              # the brow
+                   capsule(hp(0, 0.006, 0.045), hp(0, -0.0180, 0.0590), 0.0042 * Hh, 0.0066 * Hh),       # the nose
+                   ellipsoid(hp(0, -0.0205, 0.049), (0.0090 * Hh, 0.0050 * Hh, 0.0065 * Hh), Rh),        # its wings
+                   ellipsoid(hp(0, -0.037, 0.0425), (0.0165 * Hh, 0.0100 * Hh, 0.0080 * Hh), Rh)]        # the muzzle
+        for sg in (-1.0, 1.0):
+            skin_p += [ellipsoid(hp(sg * 0.024, -0.017, 0.028), (0.012 * Hh, 0.012 * Hh, 0.012 * Hh), Rh),      # cheekbone
+                       ellipsoid(hp(sg * 0.0435, -0.006, -0.004), (0.0045 * Hh, 0.0135 * Hh, 0.0085 * Hh),
+                                 Rh @ rz(sg * -8))]                                                              # ear
+            sockets += [ellipsoid(hp(sg * 0.0185, -0.0015, 0.0465), (0.0095 * Hh, 0.0050 * Hh, 0.0065 * Hh), Rh)]
+            eyes_p += [ellipsoid(hp(sg * 0.0185, -0.0018, 0.0415), (0.0072 * Hh, 0.0030 * Hh, 0.0035 * Hh), Rh)]
+            brow_p += [capsule(hp(sg * 0.0075, 0.0120, 0.0492), hp(sg * 0.019, 0.0142, 0.0482), 0.0030 * Hh, 0.0028 * Hh),
+                       capsule(hp(sg * 0.019, 0.0142, 0.0482), hp(sg * 0.0275, 0.0118, 0.0448), 0.0028 * Hh, 0.0020 * Hh)]
+        sockets += [ellipsoid(hp(0, -0.0395, 0.0505), (0.0125 * Hh, 0.0011 * Hh, 0.0060 * Hh), Rh)]             # the parting of the lips
+        lips_p += [ellipsoid(hp(0, -0.0372, 0.0478), (0.0105 * Hh, 0.0024 * Hh, 0.0040 * Hh), Rh),
+                   ellipsoid(hp(0, -0.0422, 0.0468), (0.0090 * Hh, 0.0030 * Hh, 0.0042 * Hh), Rh)]
+    else:
+        skin_p += [ellipsoid(W_(head), (0.045 * Hh, 0.064 * Hh, 0.054 * Hh), Rh),
+                   ellipsoid(W_(head + hfw * 0.05 * Hh - hd * 0.012 * Hh), (0.011 * Hh, 0.017 * Hh, 0.014 * Hh), Rh)]
+    hair_cut = None
+    if hair_style:
+        if face:
+            cap = dict(short=((0, 0.014, -0.010), (0.047, 0.053, 0.057)), bun=((0, 0.014, -0.010), (0.047, 0.053, 0.057)),
+                       bob=((0, 0.004, -0.012), (0.053, 0.068, 0.058)), long=((0, 0.010, -0.012), (0.051, 0.062, 0.058)))
+            c_, r_ = cap.get(hair_style, cap['short'])
+            hair_p += [ellipsoid(hp(*c_), tuple(v * Hh for v in r_), Rh)]
+            if hair_style == 'bun':
+                hair_p += [sphere(hp(0, 0.004, -0.071), 0.026 * Hh)]
+            if hair_style == 'long':
+                hair_p += [ellipsoid(hp(0, -0.075, -0.040), (0.052 * Hh, 0.095 * Hh, 0.030 * Hh), Rh)]
+            # the face shows through: everything in front of the hairline and the ears
+            hair_cut = [ellipsoid(hp(0, -0.045, 0.055), (0.0500 * Hh, 0.0810 * Hh, 0.0520 * Hh), Rh)]
+        else:
+            hair_p += [ellipsoid(W_(head + hd * 0.016 * Hh - hfw * 0.02 * Hh), (0.048 * Hh, 0.058 * Hh, 0.050 * Hh), Rh)]
     for s, sg in (('l', -1.0), ('r', 1.0)):
-        sh = chest + T @ np.array([sg * 0.118 * Hh * b, 0.022 * Hh, 0], F32)
+        sh = chest + T @ np.array([sg * 0.102 * Hh * b, 0.012 * Hh, 0], F32)
         ud = T @ rz(sg * J[f'abduct_{s}']) @ rx(J[f'shoulder_{s}']) @ down
         el = sh + ud * 0.165 * Hh
-        fd = T @ rz(sg * J[f'abduct_{s}'] * 0.3) @ rx(J[f'shoulder_{s}'] + J[f'elbow_{s}']) @ down
+        Ra = T @ rz(sg * J[f'abduct_{s}'] * 0.3) @ rx(J[f'shoulder_{s}'] + J[f'elbow_{s}'])            # the forearm's frame
+        fd = Ra @ down
         wr = el + fd * 0.145 * Hh
         hand = wr + fd * 0.045 * Hh
-        top_p += [capsule(W_(sh), W_(el), 0.034 * Hh * b, 0.029 * Hh * b), capsule(W_(el), W_(wr), 0.028 * Hh * b, 0.021 * Hh * b)]
-        skin_p += [capsule(W_(wr), W_(hand + fd * 0.012 * Hh), 0.022 * Hh, 0.019 * Hh)]
+        bend = np.clip(abs(J[f'elbow_{s}']) / 90, 0.15, 1.0)
+        top_p += [drape(W_(sh), W_(el), 0.032 * Hh * b, 0.028 * Hh * b, folds=3, depth=0.0025 * cl, depth_end=0.0045 * cl,
+                        rings=2.2, ring_depth=0.0038 * cl * bend, ring_at=0.9, ring_span=0.3, phase=1.0 + sg, up=D_((0, 0, 1))),
+                  drape(W_(el), W_(wr - fd * 0.006 * Hh), 0.027 * Hh * b, 0.0215 * Hh * b, folds=2, depth=0.004 * cl,
+                        depth_end=0.003 * cl, rings=2.6, ring_depth=0.0034 * cl * bend, ring_at=0.12, ring_span=0.3,
+                        phase=2.0 - sg, up=D_((0, 0, 1)))]
+        # the hand: a wrist, a flat palm, the fingers as one tapering mitt in two joints, and a thumb
+        s0, pn0 = Ra @ np.array([0, 0, 1], F32), Ra @ np.array([sg, 0, 0], F32)                         # thumb side, back of the hand
+        ro = np.radians(J[f'palm_{s}'])
+        ts = np.cos(ro) * s0 - np.sin(ro) * pn0
+        pn = np.cos(ro) * pn0 + np.sin(ro) * s0
+        wb = np.radians(J[f'wrist_{s}'])
+        ah = np.cos(wb) * fd - np.sin(wb) * pn
+        pb = np.cos(wb) * pn + np.sin(wb) * fd
+        g1, g2 = np.radians(J[f'grip_{s}'] * 0.55), np.radians(J[f'grip_{s}'] * 1.45)
+        d1, n1 = np.cos(g1) * ah - np.sin(g1) * pb, np.cos(g1) * pb + np.sin(g1) * ah
+        d2, n2 = np.cos(g2) * ah - np.sin(g2) * pb, np.cos(g2) * pb + np.sin(g2) * ah
+        kn_ = wr + ah * 0.056 * Hh
+        mid_ = kn_ + d1 * 0.030 * Hh
+        gs = np.sin(np.radians(min(J[f'grip_{s}'], 90)))
+        t1 = ah * 0.72 + ts * 0.62 - pb * (0.12 + 0.55 * gs)
+        t1 /= np.linalg.norm(t1)
+        t2 = ah * 0.95 + ts * 0.12 - pb * (0.15 + 0.8 * gs)
+        t2 /= np.linalg.norm(t2)
+        tb = wr + ah * 0.020 * Hh + ts * 0.0165 * Hh - pb * 0.003 * Hh
+        hand_p = [capsule(W_(wr - fd * 0.012 * Hh), W_(wr + ah * 0.012 * Hh), 0.0165 * Hh, 0.0175 * Hh),
+                  ellipsoid(W_(wr + ah * 0.033 * Hh), (0.0225 * Hh, 0.0295 * Hh, 0.0092 * Hh), frame(ts, ah, pb)),
+                  ellipsoid(W_(kn_ + d1 * 0.011 * Hh - ts * 0.001 * Hh), (0.0205 * Hh, 0.0235 * Hh, 0.0070 * Hh), frame(ts, d1, n1)),
+                  ellipsoid(W_(mid_ + d2 * 0.010 * Hh + ts * 0.0025 * Hh), (0.0160 * Hh, 0.0205 * Hh, 0.0056 * Hh), frame(ts, d2, n2)),
+                  capsule(W_(tb), W_(tb + t1 * 0.027 * Hh), 0.0095 * Hh, 0.0080 * Hh),
+                  capsule(W_(tb + t1 * 0.027 * Hh), W_(tb + t1 * 0.027 * Hh + t2 * 0.022 * Hh), 0.0076 * Hh, 0.0058 * Hh)]
+        scene.add(f'{name}.skin.hand_{s}', hand_p, skin, k=0.007 * Hh, **kw)
         j[f'shoulder_{s}'], j[f'elbow_{s}'], j[f'wrist_{s}'], j[f'hand_{s}'] = W_(sh), W_(el), W_(wr), W_(hand)
-        hp = pel + np.array([sg * hipw, -0.02 * Hh, 0], F32)
+        j[f'grip_{s}'] = W_(wr + ah * 0.050 * Hh - pb * (0.012 + 0.014 * gs) * Hh)
+        j[f'palm_{s}'], j[f'thumb_{s}'], j[f'fingers_{s}'] = D_(-pb), D_(ts), D_(ah)
+        hpt = pel + np.array([sg * hipw, -0.02 * Hh, 0], F32)
         td = ry(sg * -J[f'leg_out_{s}']) @ rx(J[f'hip_{s}']) @ down
-        kn = hp + td * thigh
+        kn = hpt + td * thigh
         sd_ = ry(sg * -J[f'leg_out_{s}']) @ rx(J[f'hip_{s}'] - J[f'knee_{s}']) @ down
         an = kn + sd_ * shin
         an[1] = max(an[1], 0.035 * Hh)
         fwd = ry(sg * -J[f'leg_out_{s}']) @ np.array([0, 0, 1], F32)
         toe = an + fwd * 0.105 * Hh
         toe[1] = 0.022 * Hh if an[1] < 0.06 * Hh else an[1] - 0.03 * Hh
-        bot_p += [capsule(W_(hp), W_(kn), 0.058 * Hh * b, 0.044 * Hh * b), capsule(W_(kn), W_(an), 0.042 * Hh * b, 0.027 * Hh * b)]
+        kb = np.clip(abs(J[f'knee_{s}']) / 90, 0.2, 1.0)
+        bot_p += [drape(W_(hpt), W_(kn), 0.058 * Hh * b, 0.045 * Hh * b, folds=3, depth=0.002 * cl, depth_end=0.003 * cl,
+                        rings=2.0, ring_depth=0.004 * cl * kb, ring_at=0.92, ring_span=0.25, phase=0.5 + sg, up=D_((1, 0, 0))),
+                  drape(W_(kn), W_(an), 0.043 * Hh * b, 0.030 * Hh * b, folds=3, depth=0.0025 * cl, depth_end=0.004 * cl,
+                        rings=2.4, ring_depth=0.0045 * cl, ring_at=0.9, ring_span=0.2, phase=1.7 - sg, up=D_((1, 0, 0)))]
         shoe_p += [capsule(W_(an - fwd * 0.02 * Hh - np.array([0, 0.008 * Hh, 0], F32)), W_(toe), 0.03 * Hh, 0.024 * Hh)]
-        j[f'hip_{s}'], j[f'knee_{s}'], j[f'ankle_{s}'], j[f'foot_{s}'] = W_(hp), W_(kn), W_(an), W_(toe)
+        j[f'hip_{s}'], j[f'knee_{s}'], j[f'ankle_{s}'], j[f'foot_{s}'] = W_(hpt), W_(kn), W_(an), W_(toe)
     j['lap'] = 0.5 * (j['knee_l'] + j['knee_r']) * 0.6 + 0.4 * j['pelvis'] + np.array([0, 0.07 * Hh, 0], F32)
     if skirt:
         kn_mid = 0.5 * (j['knee_l'] + j['knee_r'])
@@ -691,21 +865,30 @@ def figure(scene, name, at=(0, 0, 0), facing=0.0, height=1.7, pose='stand', skin
             hem = kn_mid.copy()
             hem[1] = at[1] + 0.12 * Hh
             fw = F @ np.array([0, 0, 1], F32)
-            bot_p += [capsule(j['pelvis'], kn_mid + np.array([0, 0.008 * Hh, 0], F32), 0.098 * Hh * b, 0.088 * Hh * b),
-                      capsule(kn_mid - fw * 0.01 * Hh, hem + fw * 0.03 * Hh, 0.082 * Hh * b, 0.10 * Hh * b)]
+            bot_p += [drape(j['pelvis'], kn_mid + np.array([0, 0.008 * Hh, 0], F32), 0.098 * Hh * b, 0.088 * Hh * b, folds=4,
+                            depth=0.0005 * cl, depth_end=0.002 * cl, phase=0.4),
+                      drape(kn_mid - fw * 0.01 * Hh + np.array([0, 0.005 * Hh, 0], F32), hem + fw * 0.03 * Hh, 0.080 * Hh * b,
+                            0.100 * Hh * b, folds=7, depth=0.0015 * cl, depth_end=0.006 * cl, phase=0.9, up=fw)]
         else:
             hem = j['pelvis'].copy()
             hem[1] = at[1] + (0.10 if skirt is True else float(skirt)) * Hh
-            bot_p += [capsule(j['pelvis'] + np.array([0, 0.03 * Hh, 0], F32), hem, 0.095 * Hh * b, 0.16 * Hh * b)]
+            bot_p += [drape(j['pelvis'] + np.array([0, 0.03 * Hh, 0], F32), hem, 0.095 * Hh * b, 0.16 * Hh * b, folds=9,
+                            depth=0.001 * cl, depth_end=0.008 * cl, phase=0.6, up=F @ np.array([0, 0, 1], F32))]
     if coat:
         hem = j['pelvis'] * 0.35 + 0.65 * (0.5 * (j['knee_l'] + j['knee_r']))
-        top_p += [capsule(j['chest'] - F @ spine * 0.05 * Hh, hem, 0.098 * Hh * b, 0.118 * Hh * b)]
-    kw = dict(importance=importance)
+        top_p += [drape(j['chest'] - F @ spine * 0.05 * Hh, hem, 0.098 * Hh * b, 0.120 * Hh * b, folds=6, depth=0.001 * cl,
+                        depth_end=0.005 * cl, phase=0.3, up=F @ np.array([0, 0, 1], F32))]
     scene.add(f'{name}.bottom', bot_p, bottom, k=0.03 * Hh, **kw)
     scene.add(f'{name}.shoes', shoe_p, shoes, k=0.01 * Hh, **kw)
-    scene.add(f'{name}.top', top_p, top, k=0.035 * Hh, **kw)
-    scene.add(f'{name}.skin', skin_p, skin, k=0.012 * Hh, **kw)
-    scene.add(f'{name}.hair', hair_p, hair, **kw)
+    scene.add(f'{name}.top', top_p, top, k=0.03 * Hh, **kw)
+    scene.add(f'{name}.skin', skin_p, skin, cut=sockets or None, k=(0.007 if face else 0.012) * Hh, **kw)
+    if hair_p:
+        scene.add(f'{name}.hair', hair_p, hair, cut=hair_cut, k=0.012 * Hh, **kw)
+    if face:
+        sk, hr = rgb(skin), rgb(hair)
+        scene.add(f'{name}.eyes', eyes_p, lerp(sk, lerp(hr, rgb('#1c1512'), 0.5), 0.72), importance=importance * 1.3)
+        scene.add(f'{name}.brows', brow_p, lerp(sk, hr, 0.75), importance=importance * 1.3)
+        scene.add(f'{name}.lips', lips_p, lerp(sk, rgb('#9c3b36'), 0.5), importance=importance * 1.3)
     if hat:
         hw = F @ hd
         scene.add(f'{name}.hat', [cylinder(j['head'] + hw * 0.036 * Hh, 0.008 * Hh, 0.105 * Hh, F @ Hm),
@@ -726,11 +909,11 @@ def masses(p, B, focus=None, loose=1.0):
     for name in B.far_to_near():
         m = B.masks[name]
         area = float(m.mean())
-        if area < 0.0004:
-            continue
         th = B.things.get(name)
-        is_bg = th is None or th.is_plane or area > 0.14
         in_focus = bool(focus) and (name == focus or name.startswith(focus + '.'))
+        if area < (0.00002 if in_focus else 0.0004):         # too small to plan for, unless it is an eye
+            continue
+        is_bg = th is None or th.is_plane or area > 0.14
         imp = (th.importance if th is not None else 1.0) * (1.5 if in_focus else 1.0)
         ext = np.sqrt(area)
         if is_bg:
@@ -741,8 +924,9 @@ def masses(p, B, focus=None, loose=1.0):
             sizes = [s0, max(s0 * 0.45, 0.004), max(s0 * 0.2, 0.0028)]
             if in_focus:
                 sizes.append(max(s0 * 0.1, 0.002))
-            k = dict(length=4.5, pickup=0.3, soft=0.1, overshoot=0.0, clip=0.85, tol=0.04 if in_focus else 0.05,
-                     jitter=0.035, hue=0.025, ctol=0.16)
+            # a big brush is held to the outline: what it lets past is too wide for the cutting-in to take back
+            k = dict(length=4.5, pickup=0.3, soft=0.1, overshoot=0.0, clip=0.85 if s0 < 0.02 else 1.0,
+                     tol=0.04 if in_focus else 0.05, jitter=0.035, hue=0.025, ctol=0.16)
         out.append(dict(name=name, mask=m, flow=B.flow, sizes=tuple(sizes), background=is_bg, focus=in_focus, **k))
     return out
 

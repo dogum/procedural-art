@@ -21,7 +21,7 @@ You are the painter. `scripts/atelier.py` is the paint, the brushes and the canv
 
 Requirements: Python 3 with numpy, scipy and pillow; ffmpeg for the process film. Work in a writable folder and call scripts by path. In the commands below `SK` is this skill's folder and `S=$SK/scripts`.
 
-Six finished paintings live in `studies/`. Read one before writing your own: `the_letter.py` (3D stage: an interior, a seated figure, window light), `pomegranates_from_the_scene.py` (the path tracer's scene file, painted), `harbour_at_first_light.py` (painted in sittings; limited palette, boats, water, drawn rigging), `rain_at_blue_hour.py` (night street, lamps, reflections, figures), `lemons_and_blue_jug.py` (still life, form and cast shadows), `wind_over_the_barley.py` (daylight landscape, clouds). Each runs as `python $SK/studies/NAME.py --out out.png [--height 1600] [--film out.mp4] [--study study.png] [--tape out.tape]`.
+Seven finished paintings live in `studies/`. Read one before writing your own: `the_letter.py` (3D stage: an interior, a seated figure, window light), `the_white_cup.py` (3D stage: a half-length figure at a table, face and hands), `pomegranates_from_the_scene.py` (the path tracer's scene file, painted), `harbour_at_first_light.py` (painted in sittings; limited palette, boats, water, drawn rigging), `rain_at_blue_hour.py` (night street, lamps, reflections, figures), `lemons_and_blue_jug.py` (still life, form and cast shadows), `wind_over_the_barley.py` (daylight landscape, clouds). Each runs as `python $SK/studies/NAME.py --out out.png [--height 1600] [--film out.mp4] [--study study.png] [--tape out.tape]`.
 
 ## How a painting is made
 
@@ -110,6 +110,8 @@ python $S/repaint.py --in ararat.png --aov work/ararat/bands_2400x1000/aov --out
 
 ```bash
 python $S/motion.py --frames work/tl/frames_HASH --aov work/tl/bands_1200x400_aov/aov --out sunset_oil.mp4 --keys 9
+# for the browser easel: a looser cut as a stroke tape plus a sheet of the film's light (keep it near 40k strokes)
+python $S/motion.py --frames work/tl/frames_HASH --aov work/tl/bands_1200x400_aov/aov --out web.mp4 --every 10 --keys 5 --looseness 1.9 --tape sunset.tape
 ```
 
 `--frames` is a folder of frames from a fixed camera: a `procedural-realism` timelapse (`timelapse.py` leaves them in `<work>/frames_<hash>`), or any numbered image sequence. Painting each frame separately would make the brushwork boil, so the film is painted as one canvas: the first frame is painted in full and every stroke is remembered; at `--keys` frames spread over the film the same strokes are laid again in that frame's colours and the painter adds only what they cannot show there (a shadow edge that moved, lamps that came on, stars); then every frame is the whole set of strokes laid again, in the same order on the same weave, in that frame's colours. Lights are laid only while their spot is lit. `--aov` (buffers of the same view from `pbr_terrain.py --aov`, at the frame size) makes the first frame a terrain-aware painting. More `--keys` follow fast changes better and cost a few seconds each.

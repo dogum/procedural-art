@@ -42,6 +42,12 @@
         <button id="save" type="button">Save PNG</button>
       </div>
       <div class="count" id="count" aria-live="off"></div>
+      <div class="hourrow" id="hourrow" hidden>
+        <label for="hour">Hour</label>
+        <input class="seek" id="hour" type="range" min="0" max="1000" value="0" aria-label="Moment of the evening, from golden hour to night">
+        <button id="evening" type="button">Let the evening pass</button>
+        <p>A moving painting: one set of strokes, laid again in the light of each moment. Pick an hour and the same brushwork is repainted in its colours; the lamps are laid only once they are lit.</p>
+      </div>
       <div class="lightrow">
         <div class="dial" id="dial" tabindex="0" role="slider" aria-label="Light direction (arrow keys)" aria-valuetext="upper left"><span class="knob" id="knob"></span></div>
         <div>

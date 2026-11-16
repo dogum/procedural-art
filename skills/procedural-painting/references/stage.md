@@ -38,21 +38,30 @@ Units are yours (metres for a room, centimetres for a table top). y is up; with 
 
 `sc.add(name, shapes, color, **options)` adds an object: one shape or a list joined by smooth union. Options: `k` (blend radius of that union), `cut` (a shape removed from it: a window, a doorway), `kind` (`'matte'`, `'metal'` with a one-bounce mirror, `'glass'` with refraction, `'emit'` for a lamp or a sky seen through a window), `gloss` (0..1, strength of the highlight), `grain` (a direction in the scene the brush follows on this object, e.g. along floorboards), `flow='around'` (brush circles the object's vertical axis), `pattern` (`planks(axis, width)` or `mottle(scale)`), `importance` (above 1 gets smaller brushes and a tighter finish).
 
-Shapes: `sphere(c, r)`, `ellipsoid(c, radii, rot)`, `box(c, half, rot, r)`, `capsule(a, b, r0, r1)`, `cylinder(base, height, r, rot)`, `cone(base, height, r0, r1, rot)`, `torus(c, R, r, rot)`, `plane(point, normal)`, `lathe(base, profile, rot)` with `profile = [(height, radius), ...]` from the foot up. `rot` is `(rx, ry, rz)` in degrees.
+Shapes: `sphere(c, r)`, `ellipsoid(c, radii, rot)`, `box(c, half, rot, r)`, `capsule(a, b, r0, r1)`, `cylinder(base, height, r, rot)`, `cone(base, height, r0, r1, rot)`, `torus(c, R, r, rot)`, `plane(point, normal)`, `lathe(base, profile, rot)` with `profile = [(height, radius), ...]` from the foot up, and `drape(a, b, r0, r1, folds, depth, depth_end, rings, ring_depth, ring_at)`: cloth over a limb or hanging from a waist, a capsule with `folds` lengthwise folds that deepen from `depth` to `depth_end` and `rings` crosswise creases gathered at `ring_at` along it. `rot` is `(rx, ry, rz)` in degrees.
 
 ## Figures
 
-`figure(scene, name, at=(x, 0, z), facing=0, height=1.7, pose='stand', skin, hair, top, bottom, shoes, skirt=False, coat=False, hat=None, build=1.0, seat=None, **joints)`
+`figure(scene, name, at=(x, 0, z), facing=0, height=1.7, pose='stand', skin, hair, top, bottom, shoes, skirt=False, coat=False, hat=None, build=1.0, seat=None, hair_style='short', face=True, cloth=1.0, **joints)`
 
-`at` is the point between the feet (for a sitting pose, the floor under the pelvis). `facing` is degrees about the vertical: 0 looks along +z (away from a camera looking along +z), 180 toward it, 90 toward +x. Poses: `stand`, `contrapposto`, `walk`, `walk2` (the other leg forward), `sit`, `read`, `reach`, `carry`; or a dict of joint angles. Keyword joints override the pose: `hip_l`, `hip_r`, `knee_l`, `knee_r`, `shoulder_l`, `shoulder_r`, `elbow_l`, `elbow_r`, `abduct_l`, `abduct_r`, `lean`, `twist`, `head_yaw`, `head_pitch` (degrees; hips and shoulders swing forward with +, knees and elbows bend with +). `skirt` and `coat` are clothing volumes, `hat` a colour, `seat` the seat height for sitting poses.
+`at` is the point between the feet (for a sitting pose, the floor under the pelvis). `facing` is degrees about the vertical: 0 looks along +z (away from a camera looking along +z), 180 toward it, 90 toward +x. Poses: `stand`, `contrapposto`, `walk`, `walk2` (the other leg forward), `sit`, `read`, `reach`, `carry`; or a dict of joint angles. Keyword joints override the pose: `hip_l`, `hip_r`, `knee_l`, `knee_r`, `shoulder_l`, `shoulder_r`, `elbow_l`, `elbow_r`, `abduct_l`, `abduct_r`, `lean`, `twist`, `head_yaw`, `head_pitch`, `head_tilt` (degrees; hips and shoulders swing forward with +, knees and elbows bend with +). `skirt` and `coat` are clothing volumes, `hat` a colour, `seat` the seat height for sitting poses.
 
-It adds the objects `name.skin`, `name.hair`, `name.top`, `name.bottom`, `name.shoes` and returns joint positions (`j['hand_l']`, `j['head']`, `j['neck']`, `j['lap']`, ...) for putting a book, a cup or an umbrella where it belongs.
+| Argument | Meaning |
+|---|---|
+| `hair_style` | `'short'`, `'bob'`, `'bun'`, `'long'`, or `None` for a bare head |
+| `face` | `True` models brow, eye sockets, nose, cheekbones, mouth, chin and ears; `False` leaves a plain egg, enough for a figure far off |
+| `cloth` | Depth of the folds in sleeves, trousers, skirt and coat: 0 is smooth tubes, 1 the default, 1.5 heavy cloth |
+| `palm_l`, `palm_r` | Turn of the hand about the forearm: 0 has the thumb leading (thumb up on a raised forearm, palms facing each other), 90 turns the palm down or back |
+| `grip_l`, `grip_r` | How far the fingers curl, 0 (flat) to about 100 (a fist); 45 to 70 holds a letter or a cup |
+| `wrist_l`, `wrist_r` | Bend of the wrist toward the palm |
 
-A figure reads as a person at mid distance from any camera: proportion, pose and cast shadow are right. It is a mannequin up close: no face beyond a nose, mitten hands, no cloth folds. Give the focal figure a light garment against a dark one so the pose reads.
+It adds the objects `name.skin` (head and neck), `name.skin.hand_l`, `name.skin.hand_r`, `name.hair`, `name.top`, `name.bottom`, `name.shoes`, and with a face `name.eyes`, `name.brows` and `name.lips`. `B.group(name)` is the mask of them all. It returns joint positions (`j['hand_l']`, `j['wrist_l']`, `j['head']`, `j['neck']`, `j['lap']`, ...) for putting a book, a cup or an umbrella where it belongs. To put something in a hand use `j['grip_l']` (a point in the curl of the fingers) with `j['palm_l']` (the way the palm faces), `j['thumb_l']` and `j['fingers_l']`: a cup held in the right hand stands at `j['grip_r'] + j['palm_r'] * its radius`. To rest a hand on a table, build the figure once in a scratch `Scene` to read `j['wrist_l']`, and set the table top just under it (see `studies/the_white_cup.py`).
+
+A figure reads as a person from full length down to half length (a head 150 to 250 px high): the head has a skull, a jaw and the planes of brow, nose and cheek, so it takes side light like a face in three-quarter view and in profile; the hands are a palm, a thumb and the fingers as one jointed mitt; sleeves, trousers and skirts fold. For a half-length figure trace finer, `sc.render(p, res=720)`, and pass `focus=` so `paint()` gives the eyes, brows and lips their own small brushes. Closer than half length it is still a mannequin: no separate fingers, no eyelids or likeness, hair as one smooth mass, and folds that are regular rather than observed. Give the focal figure a light garment against a dark one so the pose reads.
 
 ## What render() returns
 
-`B = sc.render(p)` (or `sc.render((W, H))`). Buffers are traced at 560 px high at most and enlarged.
+`B = sc.render(p, res=560)` (or `sc.render((W, H))`). Buffers are traced at `res` px high at most and enlarged.
 
 | Field | Is |
 |---|---|
@@ -76,5 +85,6 @@ A figure reads as a person at mid distance from any camera: proportion, pose and
 ## Limits
 
 - Glass casts no shadow and there are no caustics; a glass of liquid reads as a block of colour.
-- Round forms get a flat light plateau with a fairly hard edge into shadow; soften it in the study if it reads like a billiard ball.
-- Not yet used in a finished painting: `cone`, `flow='around'`, `air`, `hat`, `coat`.
+- Round forms get a flat light plateau; the turn into shadow is soft but there is no subsurface glow, so pale skin and fruit can still read a little like painted wood.
+- A close figure costs time: about 20 s to trace a half-length figure at `res=720`, against a few seconds for a figure across a room.
+- Not yet used in a finished painting: `cone`, `flow='around'`, `air`, `hat`, `coat`, the `'long'` and `'short'` hair styles, standing skirts.

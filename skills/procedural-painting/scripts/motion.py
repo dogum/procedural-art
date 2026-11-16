@@ -2,7 +2,7 @@
 
     python motion.py --frames FOLDER --out film.mp4 [--aov BANDS/aov] [--keys 7] [--fps 24]
                      [--jobs 4] [--looseness 1.0] [--push 1.0] [--ground C] [--seed 1] [--work DIR]
-                     [--gif film.gif] [--stills]
+                     [--gif film.gif] [--stills] [--tape film.tape [--lights 24]]
 
 FOLDER holds the frames of a film with a fixed camera (a procedural-realism timelapse: its
 <work>/frames_<hash> folder; or any numbered image sequence). Painting every frame separately
@@ -66,6 +66,26 @@ def _init(state):
     G.update(state)
 
 
+def write_tape(path, tape, a, W, H, n_frames):
+    """The whole set of strokes as a tape, and beside it the light of `--lights` moments."""
+    from tape import save_tape
+    idx = sorted(set(int(round(v)) for v in np.linspace(0, n_frames - 1, max(2, min(a.lights, n_frames)))))
+    h = 160
+    w = int(round(h * W / H))
+    cols = int(np.ceil(np.sqrt(len(idx) * h / w)))
+    rows = int(np.ceil(len(idx) / cols))
+    sheet = Image.new('RGB', (cols * w, rows * h))
+    for j, i in enumerate(idx):
+        im = Image.fromarray((np.clip(study_at(i), 0, 1) * 255 + 0.5).astype(np.uint8)).resize((w, h), Image.LANCZOS)
+        sheet.paste(im, ((j % cols) * w, (j // cols) * h))
+    lp = path + '.light.jpg'
+    sheet.save(lp, quality=88)
+    p = Painting(W, H, seed=a.seed, ground=a.ground, log=False)
+    p.tape = tape
+    size = save_tape(p, path, extra=dict(light=dict(file=os.path.basename(lp), n=len(idx), cols=cols, rows=rows, w=w, h=h)))
+    print(f"wrote {path} ({size / 1e6:.1f} MB) and {lp} ({os.path.getsize(lp) / 1e3:.0f} kB, {len(idx)} moments)", flush=True)
+
+
 def render_frame(i):
     out = os.path.join(G['work'], f'{i:05d}.png')
     if not (G['reuse'] and os.path.exists(out)):
@@ -93,6 +113,9 @@ def main():
     ap.add_argument('--work', default=None, help='folder for the painted frames (default: next to --out)')
     ap.add_argument('--gif', default=None)
     ap.add_argument('--stills', action='store_true', help='keep the painted frames')
+    ap.add_argument('--tape', default=None, help='also write the strokes as a tape, with a sheet of --lights studies '
+                    'beside it (FILE.light.jpg), for the browser easel')
+    ap.add_argument('--lights', type=int, default=24, help='moments of the film kept on the light sheet')
     a = ap.parse_args()
 
     pat = os.path.join(a.frames, '*') if os.path.isdir(a.frames) else a.frames
@@ -143,6 +166,8 @@ def main():
         print(f"key frame {i}: +{p.n_strokes - n0} strokes ({sum(len(r['width']) for r in tape if r['op'] == 'strokes')} in all), "
               f"{time.time() - t0:.0f} s", flush=True)
     G['tape'] = tape
+    if a.tape:
+        write_tape(a.tape, tape, a, W, H, len(files))
 
     # 3. every frame: all the strokes again with that frame's colours
     todo = list(range(len(files)))
@@ -155,12 +180,12 @@ def main():
         print(f"ffmpeg not found: no film written; the {len(files)} painted frames ({W}x{H}) are in {work}")
         return
     cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-framerate', str(a.fps), '-i', os.path.join(work, '%05d.png'),
-           '-pix_fmt', 'yuv420p', '-crf', '17', '-movflags', '+faststart', a.out]
+           '-frames:v', str(len(files)), '-pix_fmt', 'yuv420p', '-crf', '17', '-movflags', '+faststart', a.out]
     subprocess.run(cmd, check=True)
     print(f"wrote {a.out}  {W}x{H}  {len(files)} frames")
     if a.gif:
         subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', str(a.fps), '-i', os.path.join(work, '%05d.png'),
-                        '-vf', f'fps={min(a.fps, 15)},scale={min(W, 720)}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160[p];'
+                        '-vf', f'trim=end_frame={len(files)},fps={min(a.fps, 15)},scale={min(W, 720)}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160[p];'
                                '[b][p]paletteuse=dither=bayer:bayer_scale=4', a.gif], check=True)
         print(f"wrote {a.gif}")
     if not a.stills:
