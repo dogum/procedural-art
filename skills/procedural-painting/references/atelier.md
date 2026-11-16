@@ -13,7 +13,7 @@
 | `film` | Record a frame after every sitting for `p.film()`. `True` keeps frames in memory; a folder name writes them to disk, which survives `checkpoint`/`resume` |
 | `palette` | A list of tube colours: every colour on the brush becomes the nearest mix of two or three of them (see Limited palettes) |
 | `tape` | Record every stroke in `p.tape` for `tape.save_tape` and the browser player |
-| `knife` | Lay every pass with a palette knife unless the pass says `knife=False` |
+| `knife` | Lay every stroke pass (`strokes`, `mass`, `cut_in`) with a palette knife unless the pass says `knife=False`; drawn `marks` and `dabs` keep their own tool |
 
 Fields and state: `p.x`, `p.y`, `p.W`, `p.H`, `p.aspect`, `p.view()` (the flat colour on the canvas now, without relief lighting), `p.noise(scale=0.2, octaves=4, seed=None)` (smooth noise, unit standard deviation, features `scale` of the height across; give a `seed` to get the same field at every size), `p.blur(field, s)` (s in picture heights).
 

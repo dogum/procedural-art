@@ -515,7 +515,7 @@ class Painting:
         self._log = log
         self.n_strokes = 0
         self.gamut = Gamut(palette) if palette else None
-        self.knife = bool(knife)                          # lay every pass with a palette knife unless told otherwise
+        self.knife = bool(knife)                          # stroke passes use a palette knife unless told otherwise (marks and dabs keep their own tool)
         self.tape = [] if tape else None                  # raw stroke records, for replay elsewhere
         self._tape_full = tape == 'full'                  # keep full-size clip masks (for Painting.replay)
         self._ground = rgb(ground)

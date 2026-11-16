@@ -81,6 +81,18 @@ jobs:
           python "$SK/studies/rain_at_blue_hour.py" --height 400 --out out/rain_at_blue_hour.png
           python "$SK/studies/harbour_at_first_light.py" --height 300 --out out/harbour.png --tape out/harbour.tape
           python "$SK/scripts/repaint.py" --in out/fuji_pbr.png --out out/fuji_repainted.png --height 300
+      - name: The 3D stage (an interior with a figure; a path-tracer scene painted)
+        working-directory: ${{ runner.temp }}
+        run: |
+          SK="$GITHUB_WORKSPACE/skills/procedural-painting"
+          python "$SK/studies/the_letter.py" --height 300 --out out/the_letter.png
+          python "$SK/studies/pomegranates_from_the_scene.py" --height 300 --out out/pomegranates_painted.png
+      - name: A moving painting (four frames of changing light, one set of strokes)
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p work/seq
+          python -c "from PIL import Image, ImageEnhance; im = Image.open('out/fuji_pbr.png').convert('RGB'); [ImageEnhance.Brightness(im).enhance(1 - 0.22 * i).save(f'work/seq/{i:03d}.png') for i in range(4)]"
+          python "$GITHUB_WORKSPACE/skills/procedural-painting/scripts/motion.py" --frames work/seq --out out/moving.mp4 --keys 2 --jobs 2 --height 200
       - name: Painting in sittings (init, two sittings, resume, final, bundle)
         working-directory: ${{ runner.temp }}
         run: |
