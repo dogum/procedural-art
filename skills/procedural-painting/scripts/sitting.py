@@ -11,7 +11,8 @@ A painting lives in a folder:
     python sitting.py DIR                 run every sitting that has not been run yet; write DIR/look.jpg
     python sitting.py DIR --init 1200x800 [--ground C] [--seed N] [--palette "a, b, c"]
     python sitting.py DIR --final 1600 --out painting.png [--film process.mp4] [--tape t.bin]
-    python sitting.py DIR --bundle painting.py        one standalone script of the whole painting
+    python sitting.py DIR --bundle painting.py        the whole painting as one script (it finds the engine
+                                                      in ../scripts, in $ATELIER, or where it was when bundled)
 
 Each file runs with the canvas `p`, the fields `x`, `y`, the sizes `W`, `H` and everything from
 atelier already in scope; names defined in study.py and in earlier sittings stay available.
@@ -98,7 +99,11 @@ def main():
         w, h = cfg['size']
         parts = ['"""' + (os.path.basename(os.path.abspath(d)).replace('_', ' ')) + ': painted in sittings with sitting.py."""',
                  'import argparse', 'import os', 'import sys', '', 'import numpy as np', '',
-                 "sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts'))",
+                 '# the engine: beside the skill (this file in studies/), $ATELIER, or where it was when bundled',
+                 "for _d in (os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts'),",
+                 "           os.environ.get('ATELIER', ''), " + repr(os.path.dirname(os.path.abspath(__file__))) + '):',
+                 "    if _d and os.path.exists(os.path.join(_d, 'atelier.py')):",
+                 '        sys.path.insert(0, _d)', '        break',
                  'from atelier import *  # noqa: E402,F401,F403', '',
                  'ap = argparse.ArgumentParser()', "ap.add_argument('--out', default='painting.png')",
                  f"ap.add_argument('--height', type=int, default={h})", "ap.add_argument('--film', default=None)",

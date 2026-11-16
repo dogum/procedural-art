@@ -5,7 +5,12 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts'))
+# the engine: beside the skill (this file in studies/), $ATELIER, or where it was when bundled
+for _d in (os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts'),
+           os.environ.get('ATELIER', '')):
+    if _d and os.path.exists(os.path.join(_d, 'atelier.py')):
+        sys.path.insert(0, _d)
+        break
 from atelier import *  # noqa: E402,F401,F403
 
 ap = argparse.ArgumentParser()
