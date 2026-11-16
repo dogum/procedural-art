@@ -98,7 +98,8 @@
     requestAnimationFrame(frame);
   }
 
-  function restart() { if (!P) return; stopFilm(); P.reset(); P.paint(ctx, true); vt = 0; seekTo = null; }
+  function fresh() { P.reset(); P.paint(ctx, true); vt = 0; seekTo = null; mine_n = 0; $('undo').disabled = true; }   // the canvas starts over: no stroke of the hand is left to take off
+  function restart() { if (!P) return; stopFilm(); fresh(); }
 
   // ---- the evening: lay every stroke again for each moment, keep the pictures, then let them run
   function stopFilm() {
@@ -110,7 +111,7 @@
     if (!P || !light) return;
     film = { n: small ? 10 : 16, frames: [], pending: false, t: 0, dir: 1 };
     $('evening').textContent = 'Stop';
-    P.setMoment(light, 0); P.reset(); P.paint(ctx, true);
+    P.setMoment(light, 0); fresh();
   }
   function filmStep(dt) {
     const f = film;
@@ -138,7 +139,7 @@
   function setHour(t) {
     if (!P || !light) return;
     stopFilm();
-    P.setMoment(light, t); P.reset(); P.paint(ctx, true); vt = 0; seekTo = null; playing = true; fast = true;
+    P.setMoment(light, t); fresh(); playing = true; fast = true;
   }
   $('hour').addEventListener('change', () => setHour($('hour').value / 1000));
   $('play').addEventListener('click', () => { if (film) { const t = film.t / (film.n - 1); stopFilm(); setHour(t); return; } if (P && P.finished) { restart(); playing = true; } else playing = !playing; });
@@ -151,7 +152,7 @@
     if (!P) return;
     stopFilm();
     const f = seek.value / 1000;
-    if (f < P.progress) { P.reset(); P.paint(ctx, true); }
+    if (f < P.progress) fresh();
     seekTo = f; dragging = false;
   });
   $('save').addEventListener('click', () => {
@@ -189,7 +190,7 @@
   const TUBES = [['titanium white', '#f7f5ee'], ['naples yellow', '#f0d58c'], ['cadmium yellow', '#f6c21c'], ['yellow ochre', '#c8963c'], ['cadmium red', '#d8301f'],
     ['alizarin crimson', '#8c1c2c'], ['burnt sienna', '#8a4524'], ['burnt umber', '#4a2d1c'], ['ultramarine', '#1f2f93'], ['cerulean', '#3d8cc4'],
     ['viridian', '#1c6a56'], ['sap green', '#4f6b25'], ['ivory black', '#1c1b1a']];
-  let tube = TUBES[8][1], mine_n = 0, path = null, offs = null;
+  let tube = TUBES[8][1], mine_n = 0, path = null, offs = null, run = 0;
   const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
   const tubesEl = $('tubes');
   TUBES.forEach(([name, h]) => {
@@ -205,14 +206,19 @@
     if (!P || e.button > 0) return;
     e.preventDefault(); canvas.setPointerCapture(e.pointerId);
     stopFilm(); playing = false; seekTo = null;
-    P.beginStroke(); path = [at(e)]; offs = [Math.random(), Math.random(), Math.random(), Math.random()];
+    P.beginStroke(); path = [at(e)]; run = 0; offs = [Math.random(), Math.random(), Math.random(), Math.random()];
     lay(); mine_n++; $('undo').disabled = false;
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!path || !P) return;
     const p = at(e), q = path[path.length - 1];
     if (Math.hypot(p[0] - q[0], p[1] - q[1]) < 1.5) return;
-    path.push(p); lay();
+    path.push(p); run += Math.hypot(p[0] - q[0], p[1] - q[1]);
+    lay();
+    if (run > 3 * P.H) {                                   // a very long pull: the brush is reloaded and carries on
+      P.beginStroke(); path = [q, p]; run = 0; offs = [Math.random(), Math.random(), Math.random(), Math.random()];
+      lay(); mine_n++;
+    }
   });
   const lift = () => { path = null; };
   canvas.addEventListener('pointerup', lift); canvas.addEventListener('pointercancel', lift);

@@ -250,7 +250,7 @@
       for (let i = 0; i < n; i++) this._lin(i);
       this.opI = 0; this.sitI = 0; this.sitLeft = -1; this.strokeI = 0; this.done = 0; this.serial = 0;
       this.owner.fill(-1); this.stale.fill(1); this.dirty.fill(1);
-      this.finished = false;
+      this.finished = false; this._mine = null;             // a hand's last stroke cannot be taken off a new canvas
       if (tape.strokes === 0) this._drain();
     }
 
