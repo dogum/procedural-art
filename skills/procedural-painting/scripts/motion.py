@@ -19,10 +19,12 @@ would make the brushwork boil. Instead:
      on the same canvas weave, with the colours of that frame. Strokes hold still; colour moves.
 
 The result is written as an mp4 (and a GIF with --gif). --stills also keeps every painted frame.
+Without ffmpeg on the machine no film is written and the painted frames are kept instead.
 """
 import argparse
 import glob
 import os
+import shutil
 import subprocess
 import time
 from multiprocessing import Pool
@@ -129,6 +131,9 @@ def main():
             if n % 20 == 0 or n == len(todo):
                 print(f"painted {n}/{len(todo)} frames, {time.time() - t0:.0f} s", flush=True)
 
+    if not shutil.which('ffmpeg'):                           # no encoder here: the painted frames are the result
+        print(f"ffmpeg not found: no film written; the {len(files)} painted frames ({W}x{H}) are in {work}")
+        return
     cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-framerate', str(a.fps), '-i', os.path.join(work, '%05d.png'),
            '-pix_fmt', 'yuv420p', '-crf', '17', '-movflags', '+faststart', a.out]
     subprocess.run(cmd, check=True)
