@@ -68,6 +68,27 @@ A painter does not plan every stroke and then close their eyes. `sitting.py` kee
 </tr>
 </table>
 
+### A painting that moves
+
+<img src="docs/media/pt_ararat_film.gif" alt="Ararat over the city painted in oils, the light going from golden hour through dusk to night while the brush strokes stay where they are" width="840">
+
+Ararat from golden hour into night, along the real sun path for the date: 241 frames, and every one is the same canvas ([mp4](https://dogum.github.io/procedural-art/media/pt_ararat_film.mp4)). Painting each frame separately makes the brushwork boil. Here the first frame is painted once and every stroke is remembered; for each later frame the same strokes are laid again, in the same order on the same weave, in that frame's colours. At a few key frames the painter adds only what the fixed strokes cannot show: a shadow edge that moved, and the city's lamps, which are laid only while they are lit. Frame to frame, the painted film changes exactly as much as the footage it was painted from (1.9 levels out of 255 on average).
+
+<img src="docs/media/pt_ararat_film_sheet.jpg" alt="Four frames of the film: afternoon, golden hour, dusk, night with the city lit" width="840">
+
+### Set the subject up in 3D, then paint it
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/pt_letter.jpg" alt="Oil painting of a woman reading in a chair by a tall window, sunlight falling across a wooden floor, a table with a blue jug"><br><a href="skills/procedural-painting/studies/the_letter.py">The letter</a></td>
+<td width="50%"><img src="docs/media/pt_letter_detail.jpg" alt="Detail of the seated figure at full size"><br>The figure at 1:1: a posed mannequin of 3D solids, painted</td>
+</tr>
+</table>
+
+A flat study has to be drawn by hand, which is why figures and interiors were out of reach. `stage.py` lets the painter set the subject up instead: solids, posable figures, a camera and a light. The room's perspective, the patch of sun broken by the glazing bars, and the shadows of the figure and the chair all come from the geometry, and the brush follows each form without being told (down limbs, along floorboards, upright on walls). The same stage reads the path tracer's scene files, so one file gives a photograph and a painting:
+
+<img src="docs/media/pt_pomegranates.jpg" alt="The path tracer's pomegranate still life painted in oils from the same scene file" width="840">
+
 ### Watch one paint itself
 
 **[The easel](https://dogum.github.io/procedural-art/paint/)** is not a video. The page holds the list of strokes and a JavaScript port of the paint simulator, and your browser lays every stroke again, wet into wet, in 10 to 25 seconds. Drag the light to see that the paint has thickness.
@@ -210,6 +231,8 @@ Once installed, just ask. The skills look up the summit and a real viewpoint, fe
 - *"Turn this photo into a watercolour."*
 - *"Paint a fishing harbour at dawn in oils, from code, and show me the film of it being painted."*
 - *"An oil still life of pears and a copper pot. No image model."*
+- *"Paint someone reading by a window, light across the floor, and build it in 3D first so the perspective is right."*
+- *"A sunset timelapse of Rainier from Seattle as a moving oil painting."*
 
 Or run the scripts yourself. From any writable folder, with `SK` pointing at the installed skill:
 
@@ -256,10 +279,11 @@ One CPU core:
 | Painting, 3000 × 1000 | 10–60 s |
 | Original oil painting, 2400 × 1600, 30k–80k strokes | 1–3 min (10–20 s per look at an 800 px draft) |
 | The same painting live in a browser (the easel page) | 10–25 s |
+| A moving painting, 241 frames at 1200 × 400 | ~20 min on 3 cores, after the timelapse frames (~30 min with `--blend 4`) |
 
 ## Limits
 
-What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures work as simple shapes at a distance, while faces, hands and likenesses do not. The skills say so when a request lands there.
+What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures from the 3D stage read as people at mid distance, while faces, hands, cloth folds and likenesses are still out of reach. The skills say so when a request lands there.
 
 ## Repository layout
 
@@ -268,7 +292,7 @@ What works and what doesn't: light, atmosphere, glass, metal and real terrain at
 skills/
   procedural-terrain-art/     SKILL.md, scripts/, references/, assets/studio_template.html, evals/
   procedural-realism/         SKILL.md, scripts/, references/, scenes/*.json, evals/
-  procedural-painting/        SKILL.md, scripts/ (atelier.py: the paint simulator; sitting.py; repaint.py; tape.py), studies/*.py, references/
+  procedural-painting/        SKILL.md, scripts/ (atelier.py: the paint simulator; stage.py; sitting.py; motion.py; repaint.py; tape.py), studies/*.py, references/
 evals/                        claude plugin eval cases (should-trigger, should-not-trigger)
 docs/                         GitHub Pages: the showcase, the Any mountain app (docs/app), the easel (docs/paint), five studios, media
 scripts/                      build-skills.sh (the Claude.ai packages), build-app.py (docs/app/engine.js), regression_terrain.py

@@ -14,12 +14,14 @@ You are the painter. `scripts/atelier.py` is the paint, the brushes and the canv
 | Tool | Does | Time on 1 CPU |
 |---|---|---|
 | `scripts/sitting.py` + `scripts/atelier.py` | An original painting of any subject, painted in sittings with a look at the canvas between them | 10 to 20 s per look at 1200×800 · 1 to 3 min for a 2400×1600 final |
+| `scripts/stage.py` | Sets the subject up as a small 3D scene (solids, posable figures, camera, light) and hands the painter a colour study, masks, depth and form-following brush directions | 10 to 16 s per render |
 | `scripts/repaint.py` | Repaints an existing image with the same paint; with `--aov` it paints a real mountain by its ground (fall lines, snow, water) | 15 s at 1800×600 |
+| `scripts/motion.py` | A painting that moves: a fixed-camera film (a sunset timelapse) painted with one set of strokes that hold still while the light changes | about 2.5 s per frame at 1200×400, frames in parallel |
 | `scripts/tape.py` | Exports the stroke list so the painting can paint itself live in a browser (`docs/paint`) | under 1 s |
 
 Requirements: Python 3 with numpy, scipy and pillow; ffmpeg for the process film. Work in a writable folder and call scripts by path. In the commands below `SK` is this skill's folder and `S=$SK/scripts`.
 
-Four finished paintings live in `studies/`. Read one before writing your own: `harbour_at_first_light.py` (painted in sittings; limited palette, boats, water, drawn rigging), `rain_at_blue_hour.py` (night street, lamps, reflections, figures), `lemons_and_blue_jug.py` (still life, form and cast shadows), `wind_over_the_barley.py` (daylight landscape, clouds). Each runs as `python $SK/studies/NAME.py --out out.png [--height 1600] [--film out.mp4] [--study study.png] [--tape out.tape]`.
+Six finished paintings live in `studies/`. Read one before writing your own: `the_letter.py` (3D stage: an interior, a seated figure, window light), `pomegranates_from_the_scene.py` (the path tracer's scene file, painted), `harbour_at_first_light.py` (painted in sittings; limited palette, boats, water, drawn rigging), `rain_at_blue_hour.py` (night street, lamps, reflections, figures), `lemons_and_blue_jug.py` (still life, form and cast shadows), `wind_over_the_barley.py` (daylight landscape, clouds). Each runs as `python $SK/studies/NAME.py --out out.png [--height 1600] [--film out.mp4] [--study study.png] [--tape out.tape]`.
 
 ## How a painting is made
 
@@ -31,7 +33,7 @@ python $S/sitting.py work/harbour        # runs study.py and every sitting not y
 ```
 
 1. **Decide the picture in words first.** Subject, format, where the horizon or table edge sits, where the light comes from, the two or three colours that carry it (one dominant, one opposing accent), and the single place the eye should land. Write it as the docstring of `study.py`.
-2. **Build the colour study in `study.py`.** With numpy, on the coordinate fields `x` (0 to aspect) and `y` (0 at the top to 1), compute `study`, one H×W×3 image of flat intended colour: gradients for sky and ground, shapes for objects (`sd_circle`, `sd_ellipse`, `sd_box`, `sd_segment`, `sd_poly`, `sd_curve`, `lathe`, joined with `np.minimum` or `smin`, turned into masks with `fill`), light and shadow from `shade` and `cast_shadow`, noise for variation. Define here every mask and direction field the sittings will share. Run `sitting.py` and read `look.jpg`: fix drawing, values and colour now, where a change costs seconds. If the subject and the light don't read in the small grey panel, no brushwork will rescue it.
+2. **Build the colour study in `study.py`.** With numpy, on the coordinate fields `x` (0 to aspect) and `y` (0 at the top to 1), compute `study`, one H×W×3 image of flat intended colour: gradients for sky and ground, shapes for objects (`sd_circle`, `sd_ellipse`, `sd_box`, `sd_segment`, `sd_poly`, `sd_curve`, `lathe`, joined with `np.minimum` or `smin`, turned into masks with `fill`), light and shadow from `shade` and `cast_shadow`, noise for variation. **For anything that needs drawing (figures, interiors, streets, perspective, cast shadows) build the study on the 3D stage instead of by hand:** `sc = Scene(Camera(...), key=...)`, `sc.add(name, shapes, colour)`, `figure(sc, 'reader', at=..., pose='read')`, `B = sc.render(p)`; then `B.study` is the study, `B.masks` and `B.flow` are the masks and brush directions, and `paint(p, B, focus='reader')` lays it back to front (see `references/stage.md` and `the_letter.py`). Define here every mask and direction field the sittings will share. Run `sitting.py` and read `look.jpg`: fix drawing, values and colour now, where a change costs seconds. If the subject and the light don't read in the small grey panel, no brushwork will rescue it.
 3. **Add one sitting file at a time**, named so they sort (`10_lay_in.py`, `20_sky.py`, `30_water.py`, ...), each a few `p.strokes` / `p.mass` / `p.marks` calls with a comment saying what the sitting is for. Back to front, big brush first: a thin lay-in over everything, then each mass with its own brush direction (sweeps across a sky, upright pulls down a wall, round a form, level across water). That direction per mass is what an image filter cannot do and is most of why the result reads as painted.
 4. **Run `sitting.py` and read `look.jpg` after every sitting.** It shows the canvas beside the study, both again small and grey (the squint test), and a map of where they differ; `looks/NAME.jpg` keeps the canvas after each sitting. Criticise it as a painter would (muddy sky? edges all the same? strokes poking over an outline? focal point lost?), then either edit that sitting's file and run again (only the changed sittings replay), or move on.
 5. **Lights and drawn lines in the last sitting.** Thick clean highlights (`thickness` 2.5 and up, `pickup` near 0), `p.dabs` for single touches, `p.marks` for masts, posts, stems and branches.
@@ -84,6 +86,7 @@ Every parameter, the pigment list and how the simulator works: `references/ateli
 - **Figures and small objects:** build them from a few `sd_segment` and `sd_poly` shapes, paint them late with small brushes and `clip` near 0.8, and keep them simple. A silhouette with one lit edge reads better than a detailed figure.
 - **Cut in for a clean silhouette.** After an object is painted, repaint the background in a narrow band around it with `clip=1` on the background mask. `clip` below 1 on the object alone leaves a hairy outline.
 - **Round forms:** `along()` of a shading field makes whorls and `around()` makes target rings. Build the direction by hand instead: tip to tip along a lemon, down the profile of a jug (see `lemons_and_blue_jug.py`).
+- **Sun through a window (3D stage):** make the wall a `box` with `cut=box(...)`, set `soft` to 40 or more, and put an `emit` plane just outside the opening.
 - **Thick paint only in the lights.** Darks thin (`thickness` 0.3 to 0.8), lights loaded (2 to 3.5). The relief lighting does the rest.
 
 ## Repainting an image
@@ -103,6 +106,18 @@ python $R/post_terrain.py --bands work/ararat/bands_2400x1000 --out ararat.png
 python $S/repaint.py --in ararat.png --aov work/ararat/bands_2400x1000/aov --out ararat_oil.png --height 1000
 ```
 
+## A painting that moves
+
+```bash
+python $S/motion.py --frames work/tl/frames_HASH --aov work/tl/bands_1200x400_aov/aov --out sunset_oil.mp4 --keys 9
+```
+
+`--frames` is a folder of frames from a fixed camera: a `procedural-realism` timelapse (`timelapse.py` leaves them in `<work>/frames_<hash>`), or any numbered image sequence. Painting each frame separately would make the brushwork boil, so the film is painted as one canvas: the first frame is painted in full and every stroke is remembered; at `--keys` frames spread over the film the same strokes are laid again in that frame's colours and the painter adds only what they cannot show there (a shadow edge that moved, lamps that came on, stars); then every frame is the whole set of strokes laid again, in the same order on the same weave, in that frame's colours. Lights are laid only while their spot is lit. `--aov` (buffers of the same view from `pbr_terrain.py --aov`, at the frame size) makes the first frame a terrain-aware painting. More `--keys` follow fast changes better and cost a few seconds each.
+
+For the buffers of a timelapse view, render one more frame with the same view flags as after the `--` of the timelapse command, plus `--sky physical --geom-cache --size WxH --tag aov --aov`, into the same `--work`.
+
+In your own script the pieces are `Painting(..., tape='full')`, `p.replay(tape, study)` (the same strokes with colours taken from another study) and `fade=True` on passes that paint lights.
+
 ## Watching it paint in a browser
 
 Every study takes `--tape FILE` (and `sitting.py --final ... --tape FILE`): the stroke list in a 0.7 to 2 MB file. The page in `docs/paint` holds a JavaScript port of the simulator and lays the strokes again live, at any size, with a movable light. It is not a video. To add a painting there, export to `docs/paint/tapes/NAME.tape` and add `{ id: 'NAME', title: '...' }` to `PAINTINGS` in `docs/paint/app.js`. In your own script: `Painting(..., tape=True)`, then `from tape import save_tape; save_tape(p, 'x.tape', title='...')`.
@@ -111,7 +126,7 @@ Every study takes `--tape FILE` (and `sitting.py --final ... --tape FILE`): the 
 
 Say so when a request lands here.
 
-- Likeness and anatomy. Faces, hands and portraits of specific people come out as simple painted shapes. Figures work at a distance, as silhouettes or as a few planes of light.
+- Likeness and anatomy. Figures from the 3D stage read as people at mid distance (pose, proportion, cast shadow); faces, hands, cloth folds and portraits of specific people are still out of reach.
 - The picture is only as good as the study. The engine will paint a badly drawn study beautifully and it will still be badly drawn. Spend the iterations there.
 - Fine lettering, architecture with exact perspective and anything that needs ruler precision fight the medium.
 - It is oil paint. For watercolour, gouache or ink finishes of an existing image use `paint.py` in `procedural-realism`.

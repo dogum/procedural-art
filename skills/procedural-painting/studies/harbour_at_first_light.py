@@ -20,7 +20,7 @@ ap.add_argument('--film', default=None)
 ap.add_argument('--study', default=None)
 ap.add_argument('--tape', default=None)
 ap.add_argument('--palette', default='ultramarine,burnt sienna,yellow ochre,cadmium orange,alizarin crimson,titanium white', help='tube colours, comma-separated, or full')
-ap.add_argument('--knife', action='store_true', help='lay every pass with a palette knife')
+ap.add_argument('--knife', action='store_true', help='lay every stroke pass with a palette knife (drawn marks and dabs keep their own tool)')
 ap.add_argument('--seed', type=int, default=5)
 a = ap.parse_args()
 

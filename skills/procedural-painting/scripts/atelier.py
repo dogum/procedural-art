@@ -515,8 +515,9 @@ class Painting:
         self._log = log
         self.n_strokes = 0
         self.gamut = Gamut(palette) if palette else None
-        self.knife = bool(knife)                          # lay every pass with a palette knife unless told otherwise
+        self.knife = bool(knife)                          # stroke passes use a palette knife unless told otherwise (marks and dabs keep their own tool)
         self.tape = [] if tape else None                  # raw stroke records, for replay elsewhere
+        self._tape_full = tape == 'full'                  # keep full-size clip masks (for Painting.replay)
         self._ground = rgb(ground)
 
     # ---- helpers for the script -------------------------------------------------------
@@ -555,7 +556,7 @@ class Painting:
     def strokes(self, mask, color, flow=0.0, size=0.03, length=5.0, density=1.0, load=1.0, opacity=1.0,
                 pickup=0.35, dry=0.1, jitter=0.05, hue=0.03, marble=0.5, wobble=0.2, overshoot=0.3,
                 clip=0.0, ctol=0.14, refine=None, size_var=0.25, thickness=1.0, taper=0.45, bidir=True,
-                soft=0.08, batches=3, knife=None, name=None):
+                soft=0.08, batches=3, knife=None, fade=False, name=None):
         """Lay one pass of strokes of one brush size.
 
         mask       where the mass is, H x W in 0..1
@@ -580,6 +581,8 @@ class Painting:
         soft       how far the sides of a stroke melt into what is under them, in brush widths
         batches    the pass is laid in this many successive sittings (each sees the ones before)
         knife      lay the pass with a palette knife: flat slabs, hard edges, ridges, skipped patches
+        fade       for moving paintings (Painting.replay with another study): lay these strokes only
+                   as strongly as their spot is lit in that study (lamps, stars, highlights)
         """
         H, W, rng = self.H, self.W, self.rng
         knife = self.knife if knife is None else knife
@@ -665,7 +668,8 @@ class Painting:
         Li = np.maximum(np.minimum(Li, stop), np.minimum(wi * 1.1, Li)).astype(F32)
 
         k = dict(load=load, opacity=opacity, pickup=pickup, dry=dry, marble=marble, clip=clip, thickness=thickness,
-                 taper=taper, soft=soft, knife=bool(knife), shape='knife' if knife else 'brush')
+                 taper=taper, soft=soft, knife=bool(knife), shape='knife' if knife else 'brush',
+                 field=not isinstance(color, str) and np.ndim(color) == 3, jitter=jitter, hue=hue, fade=bool(fade))
         if size_f is None:
             self._deposit(pos, step, wi, Li, scol, mask, k, jitter, hue, batches)
         else:                                             # big brushes first, then each smaller octave
@@ -823,6 +827,8 @@ class Painting:
                 lo = (np.clip(mask[::st, ::st], 0, 1) * 255).astype(np.uint8)
             self.tape.append(dict(op='strokes', H=self.H, W=self.W, pos=pos.copy(), step=float(step), width=wi.copy(),
                                   length=Li.copy(), c1=c1.copy(), c2=c2.copy(), runout=runout, offs=offs,
+                                  seed=np.asarray(scol, F32).copy(),
+                                  clip_full=mask if (self._tape_full and k['clip'] > 0) else None,
                                   sittings=[g.copy() for g in groups], params=dict(k), clip_mask=lo))
         for g in groups:
             self._lay(g, pos, step, wi, Li, vn, du, q1, q2, runout, offs, mask, k)
@@ -898,17 +904,17 @@ class Painting:
             amt = load * (1 - 0.45 * runout[s] * un * un) * (1 + 0.12 * b3)
             skip = smoothstep(0.35, 1.1, b2 * 0.8 + (1 - tooth) - 0.35) * (0.25 + 2.2 * dry + 0.6 * un)
             cov = smoothstep(-0.06, 0.06, amt - 0.3 - skip)
-            a = opacity * cov * smoothstep(0.0, np.maximum(0.25 * soft, 1.0 / ws), edge)
+            a = _per(opacity, s) * cov * smoothstep(0.0, np.maximum(0.25 * soft, 1.0 / ws), edge)
             b1 = 0.3 * b3
         elif shape == 'round':
             amt = load * (1 + 0.25 * b1)
             cov = smoothstep(-0.18, 0.18, amt - 0.3 - (1 - tooth) * dry * 1.5)
-            a = opacity * cov * smoothstep(0.0, np.maximum(soft, 1.2 / ws), edge)
+            a = _per(opacity, s) * cov * smoothstep(0.0, np.maximum(soft, 1.2 / ws), edge)
         else:
             amt = load * (1 - runout[s] * un ** 1.5) * (1 + 0.42 * b1)
             need = (1 - tooth) * (dry + 0.35 * un * un) * 1.5
             cov = smoothstep(need - 0.18, need + 0.18, amt - 0.3)
-            a = opacity * cov * smoothstep(0.0, np.maximum(soft, 1.2 / ws), edge)
+            a = _per(opacity, s) * cov * smoothstep(0.0, np.maximum(soft, 1.2 / ws), edge)
         if clip > 0:
             a = a * (1 - clip + clip * mask[py_, px_])
 
@@ -929,7 +935,7 @@ class Painting:
             qs = qs * (1 - m) + qc * m
         a3 = a[:, None]
         self.q[py_, px_] = self.q[py_, px_] * (1 - a3) + qs * a3
-        body = thickness * self.px * (0.55 + 0.45 * np.sqrt(ws / (30 * self.px)))
+        body = _per(thickness, s) * self.px * (0.55 + 0.45 * np.sqrt(ws / (30 * self.px)))
         if knife:                                                         # a flat plateau, a lip where the blade lifts
             ridge = 1.3 * np.exp(-((edge - 0.02) / 0.03) ** 2) + 0.9 * smoothstep(0.86, 0.98, un)
             t = body * a * (1.0 * np.clip(amt, 0, 2) + 0.1 * b3 + ridge)
@@ -997,6 +1003,54 @@ class Painting:
         p.n_strokes = m['n_strokes']
         p.rng.bit_generator.state = m['rng']
         return p
+
+    def replay(self, tape, study=None):
+        """Lay a recorded tape again on this canvas (same size as when it was recorded). With
+        `study`, every stroke that took its colour from a study takes it from this one instead,
+        at the same spot and with the same personal variation: the same brushwork under another
+        light. Strokes recorded with fade=True (lights, stars, lamps) are only laid as strongly as
+        their spot is lit now. Replaying records nothing on this canvas's own tape."""
+        lum = np.array([0.299, 0.587, 0.114], F32)
+        for r in tape:
+            if r['op'] == 'dry':
+                self.wet *= (1 - r['amount'])
+                continue
+            if r['op'] == 'glaze':
+                m = _resize(r['mask'].astype(F32) / 255, self.W, self.H)[..., None]
+                c = np.stack([_resize(r['color'][..., i].astype(F32) / 255, self.W, self.H) for i in range(3)], -1)
+                gq = rgb_to_q(c)
+                self.q = np.sqrt(self.q * self.q + m * gq * gq).astype(F32)
+                self._frame()
+                continue
+            if r['H'] != self.H or r['W'] != self.W:
+                raise ValueError("a tape replays on a canvas of the size it was recorded on")
+            k = dict(r['params'])
+            c1, c2, pos = r['c1'], r['c2'], r['pos']
+            if study is not None and k.get('field'):
+                ix = np.clip(pos[:, 0, 0], 0, self.W - 1).astype(int)
+                iy = np.clip(pos[:, 0, 1], 0, self.H - 1).astype(int)
+                now = np.asarray(study, F32)[iy, ix]
+                was = r['seed']
+                g = np.clip((now @ lum + 0.08) / (was @ lum + 0.08), 0.3, 1.6)[:, None]
+                c1 = np.clip(now + (c1 - was) * g, 0, 1).astype(F32)
+                c2 = np.clip(now + (c2 - was) * g, 0, 1).astype(F32)
+                if k.get('fade'):                         # a light is painted only while it is lit
+                    here = smoothstep(0.35, 0.8, (now @ lum + 0.03) / (was @ lum + 0.03))
+                    k['opacity'] = (k['opacity'] * here).astype(F32)
+                    k['thickness'] = (k['thickness'] * here).astype(F32)
+            if self.gamut is not None:
+                q1, q2 = self.gamut.q[self.gamut.nearest(c1)], self.gamut.q[self.gamut.nearest(c2)]
+            else:
+                q1, q2 = rgb_to_q(c1), rgb_to_q(c2)
+            mask = r.get('clip_full')
+            if mask is None:
+                mask = (_resize(r['clip_mask'].astype(F32) / 255, self.W, self.H, Image.BILINEAR)
+                        if r.get('clip_mask') is not None else np.ones((self.H, self.W), F32))
+            vn = np.linspace(-0.5, 0.5, int(np.ceil(r['width'].max() / 0.6)) + 1).astype(F32)
+            for g_ in r['sittings']:
+                self._lay(g_, pos, r['step'], r['width'], r['length'], vn, 0.75, q1, q2, r['runout'], r['offs'], mask, k)
+                self._frame()
+            self.n_strokes += len(r['width'])
 
     def look(self, path, study=None, width=1600):
         """Write a sheet for judging the canvas: the painting, and with `study` the study beside
@@ -1096,6 +1150,11 @@ class Painting:
         if self._log:
             print(f"wrote {path}  {len(pick)} frames from {len(fr)} sittings", flush=True)
         return path
+
+
+def _per(v, s):
+    """A pass parameter that may be one number or one value per stroke."""
+    return v[s] if isinstance(v, np.ndarray) else v
 
 
 def _jitter(cols, rng, lum, hue):

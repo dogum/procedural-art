@@ -66,7 +66,7 @@ def main():
     ap.add_argument('--seed', type=int, default=1)
     ap.add_argument('--palette', default=None, help='comma-separated tube colours for a limited palette '
                     '(with --init: stored; with --final: overrides the stored one, "full" = no limit)')
-    ap.add_argument('--knife', action='store_true', help='with --init or --final: lay every pass with a palette knife')
+    ap.add_argument('--knife', action='store_true', help='with --init or --final: lay every stroke pass with a palette knife (drawn marks and dabs keep their own tool)')
     ap.add_argument('--final', type=int, metavar='HEIGHT', help='replay every sitting at this height')
     ap.add_argument('--out', default=None)
     ap.add_argument('--film', default=None)
@@ -109,7 +109,7 @@ def main():
                  f"ap.add_argument('--height', type=int, default={h})", "ap.add_argument('--film', default=None)",
                  "ap.add_argument('--study', default=None)", "ap.add_argument('--tape', default=None)",
                  f"ap.add_argument('--palette', default={','.join(cfg['palette']) if cfg.get('palette') else 'full'!r}, help='tube colours, comma-separated, or full')",
-                 "ap.add_argument('--knife', action='store_true', help='lay every pass with a palette knife')", f"ap.add_argument('--seed', type=int, default={cfg.get('seed', 1)})",
+                 "ap.add_argument('--knife', action='store_true', help='lay every stroke pass with a palette knife (drawn marks and dabs keep their own tool)')", f"ap.add_argument('--seed', type=int, default={cfg.get('seed', 1)})",
                  'a = ap.parse_args()', '',
                  f"H = a.height\nW = int(round(H * {w} / {h}))",
                  "PALETTE = None if a.palette == 'full' else [t.strip() for t in a.palette.split(',')]",
