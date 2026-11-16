@@ -72,3 +72,15 @@ h1 .thin{font-weight:600;color:var(--contour)}
 .hourrow button{font-family:var(--mono);font-size:.76rem;letter-spacing:.03em;padding:8px 12px;min-height:38px;border:1px solid var(--rule);border-radius:2px;background:transparent;cursor:pointer;color:inherit}
 .hourrow button:hover{border-color:var(--contour)}
 .hourrow p{flex:1 1 100%;margin:0;font-family:inherit;line-height:1.5}
+.turn{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-top:14px;padding-top:14px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:.76rem;color:var(--muted)}
+.turn .pno2{font-family:var(--display);font-weight:800;font-size:.95rem;letter-spacing:.14em;text-transform:uppercase;color:var(--contour)}
+.tubes{display:flex;flex-wrap:wrap;gap:6px}
+.tube{width:30px;height:30px;border-radius:50%;border:1px solid var(--rule);cursor:pointer;padding:0}
+.tube[aria-pressed="true"]{outline:2px solid var(--ink);outline-offset:2px}
+.turn label{display:flex;align-items:center;gap:6px}
+.turn input[type=range]{accent-color:var(--contour);width:120px}
+.turn input[type=checkbox]{width:16px;height:16px;accent-color:var(--contour)}
+.turn button#undo{font-family:var(--mono);font-size:.76rem;padding:8px 12px;min-height:38px;border:1px solid var(--rule);border-radius:2px;background:transparent;cursor:pointer}
+.turn button#undo:disabled{opacity:.45;cursor:default}
+.turn p{flex:1 1 100%;margin:0;line-height:1.5}
+.frame canvas{touch-action:none;cursor:crosshair}
