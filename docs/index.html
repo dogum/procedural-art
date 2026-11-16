@@ -358,9 +358,17 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
         <span class="pno">Plate VI</span>
         <h2 id="p5b">Paintings from nothing</h2>
         <p>No photo, render or model is behind these. A short Python script says what is in the picture and which way the brush moves over each part; a paint simulator lays it as strokes. Colour mixes as pigment (blue into wet yellow goes green), bristles run dry and drag the wet paint they cross, and thick paint catches a raking light.</p>
-        <div class="data">2400 × 1600, ~30,000 strokes: ~70 s<br>12-band Kubelka-Munk pigment mixing<br>wet-into-wet, dry brush, impasto relief<br>films the canvas being painted</div>
+        <div class="data">2400 × 1600, ~30,000 strokes: ~70 s<br>12-band Kubelka-Munk pigment mixing<br>wet-into-wet, dry brush, impasto relief<br>films the canvas being painted<br><a href="paint/">Watch one paint itself, live →</a></div>
       </div>
       <div class="main">
+        <figure>
+          <div class="frame free"><img id="ptHarbour" src="media/pt_harbour.jpg" alt="Oil painting of a harbour at first light, three fishing boats dark against a glowing sky and water" width="1800" height="1200" loading="lazy"></div>
+          <figcaption><span>Harbour at first light · painted in five sittings with a look between each, six tubes of paint</span><a class="save" data-save="ptHarbour" href="#" download>Save</a></figcaption>
+        </figure>
+        <figure>
+          <div class="frame free"><img src="media/pt_harbour_sittings.jpg" alt="The harbour canvas after each of its five sittings" width="3000" height="400" loading="lazy"></div>
+          <figcaption><span>The canvas after each sitting: lay-in, sky, water, boats, light</span></figcaption>
+        </figure>
         <figure>
           <div class="frame free"><img id="ptRain" src="media/pt_rain.jpg" alt="Oil painting of a wet street at blue hour with lamps, lit shop windows and two people under a red umbrella" width="1800" height="1200" loading="lazy"></div>
           <figcaption><span>Rain at blue hour · composed in under 300 lines of Python</span><a class="save" data-save="ptRain" href="#" download>Save</a></figcaption>
@@ -380,8 +388,12 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
           </figure>
         </div>
         <figure>
+          <div class="frame free"><img id="ptFuji" src="media/pt_fuji.jpg" alt="Mount Fuji over Lake Kawaguchi painted in oils from real elevation data" width="2000" height="667" loading="lazy"></div>
+          <figcaption><span>Fuji from real elevation: strokes run down the fall lines, the lake is dragged and cut across</span><a class="save" data-save="ptFuji" href="#" download>Save</a></figcaption>
+        </figure>
+        <figure>
           <div class="frame free"><img id="ptArarat" src="media/pt_ararat.jpg" alt="Ararat and Lesser Ararat painted in oils from real elevation data" width="2000" height="833" loading="lazy"></div>
-          <figcaption><span>Ararat from real elevation, painted by depth · <code>repaint.py --geom</code></span><a class="save" data-save="ptArarat" href="#" download>Save</a></figcaption>
+          <figcaption><span>Ararat from real elevation, painted by its ground · <code>repaint.py --aov</code></span><a class="save" data-save="ptArarat" href="#" download>Save</a></figcaption>
         </figure>
       </div>
     </section>

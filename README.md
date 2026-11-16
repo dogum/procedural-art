@@ -13,7 +13,7 @@ Three Claude skills. Name any mountain on Earth and get an engraving, a woodcut,
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d8935c)](#install)
 
-**[Try any mountain in your browser](https://dogum.github.io/procedural-art/app/)** · **[Showcase](https://dogum.github.io/procedural-art/)** · **[Studios](https://dogum.github.io/procedural-art/#studios)** · **[Latest release](https://github.com/dogum/procedural-art/releases/latest)** · **[Changelog](CHANGELOG.md)**
+**[Try any mountain in your browser](https://dogum.github.io/procedural-art/app/)** · **[Watch a painting paint itself](https://dogum.github.io/procedural-art/paint/)** · **[Showcase](https://dogum.github.io/procedural-art/)** · **[Studios](https://dogum.github.io/procedural-art/#studios)** · **[Latest release](https://github.com/dogum/procedural-art/releases/latest)** · **[Changelog](CHANGELOG.md)**
 
 </div>
 
@@ -54,8 +54,29 @@ What the paint does:
 - **Paint has thickness.** Stroke bodies, ridges and bristle grooves build a relief that is lit from the side, with thick paint only in the lights.
 - **The brush knows what it is painting.** Direction, size and edge are chosen per mass: sweeps across a sky, upright pulls down a wall, reflections dragged straight down and then cut across.
 
-The same engine paints the real mountains. With the depth of every pixel from the terrain renderer, the sky goes in first as one swept mass and the mountain is drawn over it:
+### Painted in sittings, with a look between each
 
+<img src="docs/media/pt_harbour.jpg" alt="Oil painting of a harbour at first light: three fishing boats and a quay dark against a glowing sky and a path of light on the water" width="840">
+
+A painter does not plan every stroke and then close their eyes. `sitting.py` keeps a painting as a folder of small files, one per sitting; after each one Claude looks at the canvas beside the study (and at both in grey, and at a map of where they differ) and decides what the next sitting is, or repaints the last. The harbour took five sittings and three corrections: a first sky that went muddy, glitter that looked like confetti, strokes poking over the horizon. It uses six tubes of paint and nothing else.
+
+<img src="docs/media/pt_harbour_sittings.jpg" alt="The harbour canvas after each of its five sittings: lay-in, sky, water, boats, light" width="840">
+
+<table>
+<tr>
+<td><img src="docs/media/pt_variants.jpg" alt="The same harbour three ways: palette knife, the four-tube Zorn palette, and the full palette"><br>The same script three ways: <code>--knife</code> · <code>--palette "yellow ochre, vermilion, ivory black, titanium white"</code> · <code>--palette full</code></td>
+</tr>
+</table>
+
+### Watch one paint itself
+
+**[The easel](https://dogum.github.io/procedural-art/paint/)** is not a video. The page holds the list of strokes and a JavaScript port of the paint simulator, and your browser lays every stroke again, wet into wet, in 10 to 25 seconds. Drag the light to see that the paint has thickness.
+
+### Real mountains, painted by their ground
+
+The terrain renderer can hand the painter what it knows about every pixel: depth, the downhill direction, slope, snow, water. Slopes are then painted with strokes running down the fall lines, snow goes on late and thick, and a lake is dragged straight down and cut across.
+
+<img src="docs/media/pt_fuji.jpg" alt="Mount Fuji over Lake Kawaguchi painted in oils from real elevation data, strokes following the slopes" width="840">
 <img src="docs/media/pt_ararat.jpg" alt="Ararat and Lesser Ararat over the plain, painted in oils from the real elevation data" width="840">
 
 ## Any mountain, in your browser
@@ -233,7 +254,8 @@ One CPU core:
 | Timelapse, 20 s at 1200 × 400, every frame rendered | ~2 hours on 4 cores, ~6 on one (resumable; `--blend 2` halves it) |
 | Clean still life, 2400 × 800 | ~1 hour (resumable) |
 | Painting, 3000 × 1000 | 10–60 s |
-| Original oil painting, 2400 × 1600, about 30k strokes | 70–90 s (10–15 s for an 800 px draft) |
+| Original oil painting, 2400 × 1600, 30k–80k strokes | 1–3 min (10–20 s per look at an 800 px draft) |
+| The same painting live in a browser (the easel page) | 10–25 s |
 
 ## Limits
 
@@ -246,9 +268,9 @@ What works and what doesn't: light, atmosphere, glass, metal and real terrain at
 skills/
   procedural-terrain-art/     SKILL.md, scripts/, references/, assets/studio_template.html, evals/
   procedural-realism/         SKILL.md, scripts/, references/, scenes/*.json, evals/
-  procedural-painting/        SKILL.md, scripts/atelier.py (the paint simulator), studies/*.py (finished paintings), references/
+  procedural-painting/        SKILL.md, scripts/ (atelier.py: the paint simulator; sitting.py; repaint.py; tape.py), studies/*.py, references/
 evals/                        claude plugin eval cases (should-trigger, should-not-trigger)
-docs/                         GitHub Pages: the showcase, the Any mountain app (docs/app), five studios, media
+docs/                         GitHub Pages: the showcase, the Any mountain app (docs/app), the easel (docs/paint), five studios, media
 scripts/                      build-skills.sh (the Claude.ai packages), build-app.py (docs/app/engine.js), regression_terrain.py
 ```
 

@@ -2,7 +2,7 @@
 cumulus, poplars and a red-roofed farm on the horizon, a rutted track coming in from the corner,
 poppies in the near field. Painted from imagination; nothing is traced or sampled from an image.
 
-    python wind_over_the_barley.py --out barley.png [--height 1600] [--film barley.mp4] [--study study.png]
+    python wind_over_the_barley.py --out barley.png [--height 1600] [--film barley.mp4] [--study study.png] [--tape out.tape]
 """
 import argparse
 import os
@@ -20,13 +20,14 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--out', default='wind_over_the_barley.png')
 ap.add_argument('--height', type=int, default=1000)
 ap.add_argument('--film', default=None)
+ap.add_argument('--tape', default=None, help='also save the stroke tape (for the browser player)')
 ap.add_argument('--study', default=None, help='also save the flat colour study the painter works from')
 ap.add_argument('--seed', type=int, default=5)
 a = ap.parse_args()
 
 H = a.height
 W = int(H * 1.5)
-p = Painting(W, H, seed=a.seed, ground='#b98a5a', film=bool(a.film))
+p = Painting(W, H, seed=a.seed, ground='#b98a5a', film=bool(a.film), tape=bool(a.tape))
 x, y = p.x, p.y
 rng = np.random.default_rng(a.seed)
 HOR = 0.66                                   # low horizon: two thirds of the picture is sky
@@ -313,3 +314,6 @@ p.marks(stalks, [rgb(c) for c in cols], size=0.0038, pickup=0.2, load=1.2, thick
 p.save(a.out)
 if a.film:
     p.film(a.film)
+if a.tape:
+    from tape import save_tape
+    print(f"wrote {a.tape}  {save_tape(p, a.tape, title='Wind over the barley') / 1e6:.2f} MB")
