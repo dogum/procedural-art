@@ -16,6 +16,9 @@ What the paint does:
 
 numpy, scipy and pillow only (ffmpeg for the process film).  See ../SKILL.md.
 """
+import glob
+import json
+import os
 import subprocess
 
 import numpy as np
@@ -79,7 +82,9 @@ def q_to_rgb(q):
 def _tcol(a, b, t):
     """A blend weight that broadcasts against colours: fields get a trailing axis."""
     t = np.asarray(t, F32)
-    if (a.shape[-1:] == (3,) or b.shape[-1:] == (3,)) and t.ndim and t.shape[-1:] != (3,):
+    colour = a.shape[-1:] == (3,) or b.shape[-1:] == (3,)
+    has_axis = (t.ndim >= 2 and t.shape[-1] in (1, 3)) or (t.shape == (3,) and max(a.ndim, b.ndim) == 1)
+    if colour and t.ndim and not has_axis:
         t = t[..., None]
     return t
 
@@ -264,18 +269,31 @@ def fill(sd, soft=0.004):
     return smoothstep(soft, -soft, sd)
 
 
-def along(field, smooth_px=0.0):
-    """Brush direction that follows the contour lines of a field (across its gradient)."""
+def _with_fallback(ang, gx, gy, fallback):
+    """Where a field is flat its gradient direction is noise: lean on `fallback` there."""
+    if fallback is None:
+        return ang.astype(F32)
+    g = np.hypot(gx, gy)
+    conf = smoothstep(0.03, 0.15, g / (np.percentile(g, 97) + 1e-12))
+    fb = np.asarray(fallback, F32)
+    a2 = np.where(np.cos(ang - fb) < 0, ang + np.pi, ang)              # same half-plane as the fallback
+    return np.arctan2(conf * np.sin(a2) + (1 - conf) * np.sin(fb),
+                      conf * np.cos(a2) + (1 - conf) * np.cos(fb)).astype(F32)
+
+
+def along(field, smooth_px=0.0, fallback=None):
+    """Brush direction that follows the contour lines of a field (across its gradient). Where the
+    field is flat the direction is undefined; give `fallback` (an angle or a field) to use there."""
     f = blur(field, smooth_px) if smooth_px else np.asarray(field, F32)
     gy, gx = np.gradient(f)
-    return np.arctan2(gx, -gy).astype(F32)
+    return _with_fallback(np.arctan2(gx, -gy), gx, gy, fallback)
 
 
-def across(field, smooth_px=0.0):
+def across(field, smooth_px=0.0, fallback=None):
     """Brush direction that runs down the gradient of a field (fall lines)."""
     f = blur(field, smooth_px) if smooth_px else np.asarray(field, F32)
     gy, gx = np.gradient(f)
-    return np.arctan2(gy, gx).astype(F32)
+    return _with_fallback(np.arctan2(gy, gx), gx, gy, fallback)
 
 
 def around(x, y, cx, cy):
@@ -290,6 +308,148 @@ def image_flow(img, sigma_px=6.0):
     gy, gx = np.gradient(L)
     jxx, jyy, jxy = blur(gx * gx, sigma_px), blur(gy * gy, sigma_px), blur(gx * gy, sigma_px)
     return (0.5 * np.arctan2(2 * jxy, jxx - jyy) + np.pi / 2).astype(F32)
+
+
+# ----------------------------------------------------------------------------------------
+# forms: normals, light families, cast shadows, the ground plane
+# ----------------------------------------------------------------------------------------
+def light_dir(v):
+    """Unit light direction from (x, y, z): x right, y down, z toward the viewer."""
+    v = np.asarray(v, F32)
+    return v / np.linalg.norm(v)
+
+
+def ellipsoid_normal(x, y, cx, cy, rx, ry=None, angle=0.0):
+    """Normal field (nx, ny, nz) of a ball or an ellipsoid seen face on. Valid inside its outline
+    (sd_ellipse with the same arguments gives the outline)."""
+    ry = rx if ry is None else ry
+    c, s = np.cos(angle), np.sin(angle)
+    u, v = ((x - cx) * c + (y - cy) * s) / rx, (-(x - cx) * s + (y - cy) * c) / ry
+    k = np.hypot(u, v)
+    sc = np.minimum(k, 0.999) / np.maximum(k, 1e-6)
+    u, v = u * sc, v * sc
+    nz = np.sqrt(np.maximum(1 - u * u - v * v, 0))
+    return (u * c - v * s).astype(F32), (u * s + v * c).astype(F32), nz.astype(F32)
+
+
+def lathe(x, y, cx, profile):
+    """A turned form (jug, bottle, vase, bowl) standing upright on the axis x = cx.
+    profile: [(y, radius), ...] from top to bottom. Returns (sd, normal, slope): the outline as a
+    distance field, the normal field (nx, ny, nz), and dr/dy for flow_lathe()."""
+    prof = np.asarray(profile, F32)
+    ys = np.linspace(prof[0, 0], prof[-1, 0], 256)
+    rs = ndi.gaussian_filter1d(np.interp(ys, prof[:, 0], prof[:, 1]), 128.0 / len(prof), mode='nearest')
+    r = np.interp(y, ys, rs).astype(F32)
+    dr = np.interp(y, ys, np.gradient(rs, ys)).astype(F32)
+    u = np.clip((x - cx) / np.maximum(r, 1e-5), -0.999, 0.999)
+    nz = np.sqrt(1 - u * u)
+    n = np.stack([u, -dr * np.ones_like(u), nz])
+    n /= np.linalg.norm(n, axis=0, keepdims=True)
+    sd = np.maximum(np.abs(x - cx) - r, np.maximum(prof[0, 0] - y, y - prof[-1, 0]))
+    return sd.astype(F32), (n[0].astype(F32), n[1].astype(F32), n[2].astype(F32)), dr
+
+
+def shade(n, light, lit, half, core, refl=None, refl_from=(0.25, 0.9, 0.3), refl_amt=0.6, turn=0.0):
+    """The light families of a form: `lit` on the side facing the light, `half` in the halftone,
+    `core` in the shadow, and `refl` (light bounced back from the table or ground, arriving from
+    `refl_from`) inside the shadow. turn > 0 brings the shadow further round the form.
+    Returns (colour H x W x 3, lambert): lambert > 0 is the light side."""
+    L = light_dir(light)
+    lam = n[0] * L[0] + n[1] * L[1] + n[2] * L[2] - turn
+    c = lerp(rgb(core), rgb(half), smoothstep(-0.02, 0.30, lam))
+    c = lerp(c, rgb(lit), smoothstep(0.25, 0.80, lam))
+    if refl is not None:
+        b = light_dir(refl_from)
+        up = np.clip(n[0] * b[0] + n[1] * b[1] + n[2] * b[2], 0, 1)
+        c = lerp(c, rgb(refl), refl_amt * smoothstep(0.1, 0.9, up) * smoothstep(0.02, -0.35, lam))
+    return c.astype(F32), lam.astype(F32)
+
+
+def specular(n, light, power=40.0):
+    """Highlight strength 0..1 of a glossy form (Blinn), for the white note laid on last."""
+    L = light_dir(light)
+    h = light_dir((L[0], L[1], L[2] + 1.0))
+    return (np.clip(n[0] * h[0] + n[1] * h[1] + n[2] * h[2], 0, 1) ** power).astype(F32)
+
+
+def cast_shadow(x, y, ax, ay, bx, by, r0, r1=None, squash=0.36, soft0=0.006, soft1=0.05):
+    """A cast shadow lying on a table or the ground, 0..1: a tapered shape from the foot of the
+    object (ax, ay) to where the shadow ends (bx, by), squashed into the ground plane, crisp at
+    the object and soft at its far end."""
+    r1 = r0 if r1 is None else r1
+    yy, byy = ay + (y - ay) / squash, ay + (by - ay) / squash
+    d = sd_segment(x, yy, ax, ay, bx, byy, r0, r1)
+    far = np.clip(((x - ax) * (bx - ax) + (yy - ay) * (byy - ay)) / ((bx - ax) ** 2 + (byy - ay) ** 2 + 1e-12), 0, 1)
+    soft = soft0 + (soft1 - soft0) * far
+    return smoothstep(soft, -soft, d)
+
+
+def flow_ellipse(x, y, cx, cy, rx, ry, angle=0.0, bow=1.0):
+    """Brush direction for an egg, a lemon, a head: tip to tip along the long axis, bowing out
+    with the form (no whorls, no target rings)."""
+    c, s = np.cos(angle), np.sin(angle)
+    u, v = ((x - cx) * c + (y - cy) * s) / rx, (-(x - cx) * s + (y - cy) * c) / ry
+    dv = -2 * u * v / np.maximum(1 - np.clip(u, -0.95, 0.95) ** 2, 0.1) * bow
+    return (angle + np.arctan2(dv * ry, rx)).astype(F32)
+
+
+def flow_lathe(x, y, cx, profile, bow=0.8):
+    """Brush direction down the profile of a turned form (see lathe())."""
+    sd, n, dr = lathe(x, y, cx, profile)
+    return np.arctan2(1.0, dr * n[0] * bow).astype(F32)
+
+
+def ground_plane(x, y, horizon, cx=None, eye=0.022):
+    """Coordinates on a level ground seen in perspective, for everything that must shrink toward
+    the horizon. Returns (gu, gv, near): across, into the picture (large = far), and 0 at the
+    horizon to 1 at the bottom edge."""
+    cx = float(np.mean(x)) if cx is None else cx
+    dy = np.maximum(y - horizon, 0)
+    z = 1.0 / (dy + eye)
+    return ((x - cx) * z).astype(F32), z.astype(F32), smoothstep(0.0, float(np.max(y)) - horizon, dy)
+
+
+# ----------------------------------------------------------------------------------------
+# a limited palette: every colour on the brush is a mix of a few tubes
+# ----------------------------------------------------------------------------------------
+def rgb_to_oklab(c):
+    l = srgb_to_lin(c) @ np.array([[0.4122214708, 0.2119034982, 0.0883024619],
+                                   [0.5363325363, 0.6806995451, 0.2817188376],
+                                   [0.0514459929, 0.1073969566, 0.6299787005]], F32)
+    return (np.cbrt(l) @ np.array([[0.2104542553, 1.9779984951, 0.0259040371],
+                                   [0.7936177850, -2.4285922050, 0.7827717662],
+                                   [-0.0040720468, 0.4505937099, -0.8086757660]], F32)).astype(F32)
+
+
+class Gamut:
+    """Everything a set of tube colours can mix: a table of mixes searched by perceptual distance."""
+
+    def __init__(self, tubes):
+        from scipy.spatial import cKDTree
+        self.tubes = list(tubes)
+        n = len(self.tubes)
+        from itertools import combinations, product
+        rows = [np.eye(n, dtype=F32)]
+        for k, parts in ((2, (1, 2, 4, 8, 16, 32, 64, 128)), (3, (1, 4, 16, 64))):   # a painter mixes two or three tubes
+            for idx in combinations(range(n), min(k, n)):
+                for pr in product(parts, repeat=len(idx)):
+                    if min(pr) != 1:
+                        continue                          # the same recipe scaled up
+                    w = np.zeros(n, F32)
+                    w[list(idx)] = pr
+                    rows.append((w / w.sum())[None])
+        wts = np.concatenate(rows)
+        self.q = (wts @ np.stack([rgb_to_q(rgb(t)) for t in self.tubes])).astype(F32)
+        self.rgb = q_to_rgb(self.q)
+        self.tree = cKDTree(rgb_to_oklab(self.rgb))
+
+    def nearest(self, cols):
+        return self.tree.query(rgb_to_oklab(np.asarray(cols, F32).reshape(-1, 3)))[1]
+
+    def project(self, img):
+        """The nearest mixable colour for every pixel or colour of img (sRGB)."""
+        img = np.asarray(img, F32)
+        return self.rgb[self.nearest(img)].reshape(img.shape)
 
 
 def canvas_weave(H, W, period, rng):
@@ -323,10 +483,11 @@ class Painting:
     p.dry(...)        let the surface set between stages
     p.save(path)      light the relief and write the picture
     p.film(path)      write the process film (pass film=True to the constructor)
+    p.dabs / p.marks / p.cut_in / p.look / p.checkpoint: see references/atelier.md
     """
 
     def __init__(self, width, height, seed=1, ground=(0.62, 0.50, 0.36), weave=1.0, film=False, film_px=900,
-                 log=True):
+                 log=True, palette=None, tape=False, knife=False):
         self.W, self.H = int(width), int(height)
         self.rng = np.random.default_rng(seed)
         self.seed = seed
@@ -343,10 +504,20 @@ class Painting:
         self.h = np.zeros((self.H, self.W), F32)          # paint relief, in pixels
         self.wet = np.zeros((self.H, self.W), F32)
         self._btile = self._bristle_tile(self.rng)
-        self._film = [] if film else None
+        self._film = None
+        self._film_dir = None
+        if isinstance(film, str):                         # frames on disk: survives checkpoint/resume
+            os.makedirs(film, exist_ok=True)
+            self._film_dir = film
+        elif film:
+            self._film = []
         self._film_px = film_px
         self._log = log
         self.n_strokes = 0
+        self.gamut = Gamut(palette) if palette else None
+        self.knife = bool(knife)                          # lay every pass with a palette knife unless told otherwise
+        self.tape = [] if tape else None                  # raw stroke records, for replay elsewhere
+        self._ground = rgb(ground)
 
     # ---- helpers for the script -------------------------------------------------------
     def noise(self, scale=0.2, octaves=4, seed=None, gain=0.5):
@@ -384,13 +555,14 @@ class Painting:
     def strokes(self, mask, color, flow=0.0, size=0.03, length=5.0, density=1.0, load=1.0, opacity=1.0,
                 pickup=0.35, dry=0.1, jitter=0.05, hue=0.03, marble=0.5, wobble=0.2, overshoot=0.3,
                 clip=0.0, ctol=0.14, refine=None, size_var=0.25, thickness=1.0, taper=0.45, bidir=True,
-                soft=0.08, batches=3, name=None):
+                soft=0.08, batches=3, knife=None, name=None):
         """Lay one pass of strokes of one brush size.
 
         mask       where the mass is, H x W in 0..1
         color      what colour it should be: H x W x 3 sRGB, a triple, '#hex' or a pigment name
         flow       brush direction in radians (0 = along +x, pi/2 = down), a number or H x W
-        size       brush width as a fraction of the picture height
+        size       brush width as a fraction of the picture height; an H x W field gives every
+                   stroke the size under its start (strokes that shrink into the distance)
         length     stroke length in brush widths
         density    1 covers the mass about twice over; lower leaves the layer below showing
         load       how full the brush is; low values run dry sooner
@@ -407,11 +579,19 @@ class Painting:
         thickness  impasto relief of this pass
         soft       how far the sides of a stroke melt into what is under them, in brush widths
         batches    the pass is laid in this many successive sittings (each sees the ones before)
+        knife      lay the pass with a palette knife: flat slabs, hard edges, ridges, skipped patches
         """
         H, W, rng = self.H, self.W, self.rng
+        knife = self.knife if knife is None else knife
         mask = np.clip(self._field(mask), 0, 1)
         col = self._field(color, 3)
-        w_px = max(size * H, 2.0)
+        size_f = None
+        if np.ndim(size) == 2:
+            size_f = np.maximum(np.asarray(size, F32) * H, 2.0)
+            inside = size_f[mask > 0.5]
+            w_px = float(np.percentile(inside, 5)) if inside.size else float(size_f.min())
+        else:
+            w_px = max(size * H, 2.0)
         fl = self._field(flow)
         fcos, fsin = np.cos(fl), np.sin(fl)
 
@@ -428,12 +608,16 @@ class Painting:
         sy = ((gy + rng.random((ny, nx))) * sp).ravel()
         ok = (sx < W) & (sy < H)
         sx, sy = sx[ok], sy[ok]
-        keep = rng.random(len(sx)) < wgt[sy.astype(int), sx.astype(int)] ** 0.8
+        prob = wgt[sy.astype(int), sx.astype(int)] ** 0.8
+        if size_f is not None:                            # bigger brushes need fewer strokes
+            prob = prob * np.minimum(w_px / size_f[sy.astype(int), sx.astype(int)], 1.0) ** 2
+        keep = rng.random(len(sx)) < prob
         sx, sy = sx[keep].astype(F32), sy[keep].astype(F32)
         N = len(sx)
         if N == 0:
             return 0
-        wi = (w_px * np.exp(np.clip(rng.standard_normal(N), -2, 2) * size_var)).astype(F32)
+        w_at = size_f[sy.astype(int), sx.astype(int)] if size_f is not None else w_px
+        wi = (w_at * np.exp(np.clip(rng.standard_normal(N), -2, 2) * size_var)).astype(F32)
         wi = np.maximum(wi, 1.6)
         Li = (length * wi * rng.uniform(0.55, 1.25, N)).astype(F32)
 
@@ -442,7 +626,7 @@ class Painting:
         K = int(np.ceil(Li.max() / step)) + 2
         pos = np.zeros((N, K, 2), F32)
         pos[:, 0, 0], pos[:, 0, 1] = sx, sy
-        msoft = blur(mask, overshoot * w_px) if overshoot > 0 else mask
+        msoft = blur(mask, overshoot * float(np.median(wi))) if overshoot > 0 else mask
         ix, iy = sx.astype(int), sy.astype(int)
         dx, dy = fcos[iy, ix].copy(), fsin[iy, ix].copy()
         if bidir:
@@ -452,6 +636,7 @@ class Painting:
         scol = col[iy, ix].astype(F32)
         alive = np.ones(N, bool)
         stop = np.full(N, np.inf, F32)
+        m0 = np.maximum(msoft[iy, ix], 0.05)              # a soft mask thins the strokes, it does not stop them
         for k in range(1, K):
             px, py = pos[:, k - 1, 0], pos[:, k - 1, 1]
             jx, jy = np.clip(px, 0, W - 1).astype(int), np.clip(py, 0, H - 1).astype(int)
@@ -465,22 +650,40 @@ class Painting:
             pos[:, k, 0], pos[:, k, 1] = px + dx * step, py + dy * step
             jx = np.clip(pos[:, k, 0], 0, W - 1).astype(int)
             jy = np.clip(pos[:, k, 1], 0, H - 1).astype(int)
-            out = (msoft[jy, jx] < 0.5) | (np.abs(col[jy, jx] - scol).max(-1) > ctol)
+            out = (msoft[jy, jx] < 0.5 * np.minimum(m0, 1.0)) | (np.abs(col[jy, jx] - scol).max(-1) > ctol)
             out |= (pos[:, k, 0] < -wi) | (pos[:, k, 0] > W + wi) | (pos[:, k, 1] < -wi) | (pos[:, k, 1] > H + wi)
             newly = alive & out
-            stop[newly] = k * step
+            stop[newly] = (k - 1) * step                  # end on the last point that was still inside
             alive &= ~out
+        early = stop < 1.1 * wi                           # ran into the edge at once: pull the other way
+        k1 = np.minimum(np.ceil(1.1 * wi / step).astype(int), K - 1)
+        back = 2 * pos[:, 0] - pos[np.arange(N), k1]      # where the stroke would end if pulled the other way
+        bx_ = np.clip(back[:, 0], 0, W - 1).astype(int)
+        by_ = np.clip(back[:, 1], 0, H - 1).astype(int)
+        early &= msoft[by_, bx_] >= 0.5 * np.minimum(m0, 1.0)
+        pos[early] = 2 * pos[early, 0:1] - pos[early]
         Li = np.maximum(np.minimum(Li, stop), np.minimum(wi * 1.1, Li)).astype(F32)
 
-        self._deposit(pos, step, wi, Li, scol, mask, dict(load=load, opacity=opacity, pickup=pickup, dry=dry,
-                      marble=marble, clip=clip, thickness=thickness, taper=taper, soft=soft), jitter, hue, batches)
+        k = dict(load=load, opacity=opacity, pickup=pickup, dry=dry, marble=marble, clip=clip, thickness=thickness,
+                 taper=taper, soft=soft, knife=bool(knife), shape='knife' if knife else 'brush')
+        if size_f is None:
+            self._deposit(pos, step, wi, Li, scol, mask, k, jitter, hue, batches)
+        else:                                             # big brushes first, then each smaller octave
+            octave = np.floor(np.log(wi / wi.min()) / np.log(1.7)).astype(int)
+            for o in range(octave.max(), -1, -1):
+                sel = np.flatnonzero(octave == o)
+                if len(sel):
+                    kk = int(np.ceil(Li[sel].max() / step)) + 2
+                    self._deposit(pos[sel, :kk], step, wi[sel], Li[sel], scol[sel], mask, k, jitter, hue, batches)
         self.n_strokes += N
         if self._log:
-            print(f"  {name or 'pass':<18s} brush {w_px:6.1f}px  {N:6d} strokes", flush=True)
+            sz = f"{wi.min():.0f}-{wi.max():.0f}px" if size_f is not None else f"{w_px:6.1f}px"
+            print(f"  {name or 'pass':<18s} brush {sz}  {N:6d} strokes", flush=True)
         return N
 
     def marks(self, lines, color, size=0.006, mask=None, load=1.2, opacity=1.0, pickup=0.15, dry=0.0, jitter=0.03,
-              hue=0.02, marble=0.3, thickness=1.5, taper=0.3, soft=0.05, wobble=0.0, name=None):
+              hue=0.02, marble=0.3, thickness=1.5, taper=0.3, soft=0.05, wobble=0.0, knife=False, shape=None,
+              name=None):
         """Deliberate single strokes: each line is a list of (x, y) points in picture units and is
         drawn once, in order (a mast, a branch, a signature). `color` is one colour for all, a list
         with one colour per line, or an H x W x 3 field sampled at each line's start. `size` may
@@ -528,22 +731,69 @@ class Painting:
         m = np.ones((H, W), F32) if mask is None else np.clip(self._field(mask), 0, 1)
         self._deposit(pos, step, wi, Li, scol, m, dict(load=load, opacity=opacity, pickup=pickup, dry=dry,
                       marble=marble, clip=0.0 if mask is None else 1.0, thickness=thickness, taper=taper,
-                      soft=soft), jitter, hue, batches=None)
+                      soft=soft, knife=bool(knife), shape=shape or ('knife' if knife else 'brush')),
+                      jitter, hue, batches=None)
         self.n_strokes += N
         if self._log:
             print(f"  {name or 'marks':<18s} brush {float(wi.mean()):6.1f}px  {N:6d} marks", flush=True)
         return N
 
+    def dabs(self, points, color, size=0.01, stretch=1.0, angle=None, load=1.3, pickup=0.1, thickness=2.0,
+             soft=0.12, jitter=0.04, hue=0.03, name=None, **kw):
+        """Single touches of a loaded brush: a round dab at each (x, y) point. stretch > 1 makes
+        petals and leaves, pointing along `angle` (radians; one value, one per point, or None for
+        any direction). `color` and `size` as in marks(): one, one per point, or a study field."""
+        pts = np.asarray(points, F32).reshape(-1, 2)
+        n = len(pts)
+        if n == 0:
+            return 0
+        sz = np.broadcast_to(np.asarray(size, F32), (n,))
+        ang = self.rng.uniform(0, TAU, n) if angle is None else np.broadcast_to(np.asarray(angle, F32), (n,))
+        half = 0.5 * sz * np.broadcast_to(np.asarray(stretch, F32), (n,))
+        d = np.stack([np.cos(ang), np.sin(ang)], -1) * half[:, None]
+        if not isinstance(color, str) and np.ndim(color) == 3:          # sample the study at the centre
+            jx = np.clip(pts[:, 0] * self.H, 0, self.W - 1).astype(int)
+            jy = np.clip(pts[:, 1] * self.H, 0, self.H - 1).astype(int)
+            color = [c for c in np.asarray(color, F32)[jy, jx]]
+        return self.marks([[p_ - d_, p_ + d_] for p_, d_ in zip(pts, d)], color, size=list(sz), load=load,
+                          pickup=pickup, thickness=thickness, soft=soft, jitter=jitter, hue=hue, taper=0.0,
+                          shape='round', name=name or 'dabs', **kw)
+
+    def cut_in(self, objects, color, width=0.02, size=0.012, **kw):
+        """Paint the background back up to the objects: a band of strokes around `objects` (their
+        mask), cut exactly at the outline. This is what gives a painted object a clean silhouette;
+        do it after the objects are painted. `color` is the study."""
+        obj = np.clip(self._field(objects), 0, 1)
+        near = blur(obj, max(width * self.H, 1.0))
+        band = smoothstep(0.02, 0.3, near) * (1 - obj)
+        k = dict(length=4.0, clip=1.0, overshoot=0.0, pickup=0.3, soft=0.12, ctol=0.12, jitter=0.03, density=1.5,
+                 name='cutting in')
+        k.update(kw)
+        return self.strokes(band, color, flow=along(near, fallback=0.0), size=size, **k)
+
+    def ground_noise(self, horizon, scale_u=1.0, scale_v=1.0, seed=0, octaves=3, shear=0.0, cx=None):
+        """Smooth noise lying on the ground plane, so its features shrink toward the horizon:
+        furrows, cloud shadows, drifts of flowers, swell on water. scale_* are features per unit
+        of depth, across and into the picture; shear slants them."""
+        gu, gv, _ = ground_plane(self.x, self.y, horizon, cx)
+        tex = self.noise(0.08, octaves, seed=seed)
+        row = gv * scale_v * self.H * 0.02
+        col = gu * scale_u * self.H * 0.02 + shear * row + 0.5 * self.W
+        return ndi.map_coordinates(tex, [row % (2 * self.H), col % (2 * self.W)], order=1, mode='mirror').astype(F32)
+
     def _deposit(self, pos, step, wi, Li, scol, mask, k, jitter, hue, batches):
         """Lay traced strokes: batches=None keeps the given order (one sitting per stroke budget)."""
         rng = self.rng
         N = len(wi)
-        load, opacity, pickup, dry, marble = k['load'], k['opacity'], k['pickup'], k['dry'], k['marble']
-        clip, thickness, taper, soft = k['clip'], k['thickness'], k['taper'], k['soft']
         # --- colour on the brush: the target at the seed, never quite the same twice
         c1 = _jitter(scol, rng, jitter, hue)
         c2 = _jitter(scol, rng, jitter * 2.2 + 0.02, hue * 2.0)
-        q1, q2 = rgb_to_q(c1), rgb_to_q(c2)
+        if self.gamut is not None:                        # only what the tubes on the palette can mix
+            i1, i2 = self.gamut.nearest(c1), self.gamut.nearest(c2)
+            q1, q2 = self.gamut.q[i1], self.gamut.q[i2]
+            c1, c2 = self.gamut.rgb[i1], self.gamut.rgb[i2]
+        else:
+            q1, q2 = rgb_to_q(c1), rgb_to_q(c2)
         runout = rng.uniform(0.35, 0.8, N).astype(F32)
         offs = rng.random((N, 4)).astype(F32)
 
@@ -554,7 +804,9 @@ class Painting:
         order = rng.permutation(N) if batches else np.arange(N)
         budget = 3_500_000
         groups, cur, cnt = [], [], 0
-        per_sitting = int(np.ceil(N / max(batches, 1))) if batches else N
+        # drawn marks are laid one at a time when there are few, so a later line's dry gaps show the
+        # earlier line under it, not the canvas from before the pass
+        per_sitting = int(np.ceil(N / max(batches, 1))) if batches else (1 if N <= 64 else int(np.ceil(N / 64)))
         for i in order:
             c = nu_all[i] * nv
             if cur and (cnt + c > budget or len(cur) >= per_sitting):
@@ -564,13 +816,24 @@ class Painting:
             cnt += c
         groups.append(np.array(cur))
         vn = np.linspace(-0.5, 0.5, nv).astype(F32)
+        if self.tape is not None:
+            lo = None
+            if k['clip'] > 0:                             # the outline strokes are cut at, kept small
+                st = max(1, self.H // 256)
+                lo = (np.clip(mask[::st, ::st], 0, 1) * 255).astype(np.uint8)
+            self.tape.append(dict(op='strokes', H=self.H, W=self.W, pos=pos.copy(), step=float(step), width=wi.copy(),
+                                  length=Li.copy(), c1=c1.copy(), c2=c2.copy(), runout=runout, offs=offs,
+                                  sittings=[g.copy() for g in groups], params=dict(k), clip_mask=lo))
         for g in groups:
-            self._lay(g, pos, step, wi, Li, vn, du, q1, q2, runout, offs, mask, load, opacity, pickup, dry, marble,
-                      clip, thickness, taper, soft)
+            self._lay(g, pos, step, wi, Li, vn, du, q1, q2, runout, offs, mask, k)
             self._frame()
 
-    def _profile(self, u, L, w, taper):
+    def _profile(self, u, L, w, taper, shape='brush'):
         """Half-width of the stroke footprint (in widths) at distance u from its start."""
+        if shape == 'round':                                              # a dab: an ellipse
+            return 0.5 * np.sqrt(np.clip(1 - (2 * u / L - 1) ** 2, 0, 1))
+        if shape == 'knife':                                              # a slab: square ends
+            return 0.5 * np.clip(u / (0.05 * w), 0, 1) ** 0.5 * np.clip((L - u) / (0.05 * w), 0, 1) ** 0.5
         cap = np.clip(u / (0.16 * w), 0, 1) ** 0.35                       # rounded heel
         tail = 1 - taper * smoothstep(0.55, 1.0, u / L) ** 1.5           # lifts off toward the end
         endcap = np.sqrt(np.clip((L - u) / (0.22 * w), 0, 1))
@@ -588,8 +851,10 @@ class Painting:
         d /= (np.hypot(d[..., 0], d[..., 1])[..., None] + 1e-9)
         return p, np.stack([-d[..., 1], d[..., 0]], -1)
 
-    def _lay(self, g, pos, step, wi, Li, vn, du, q1, q2, runout, offs, mask, load, opacity, pickup, dry, marble,
-             clip, thickness, taper, soft):
+    def _lay(self, g, pos, step, wi, Li, vn, du, q1, q2, runout, offs, mask, k):
+        load, opacity, pickup, dry, marble = k['load'], k['opacity'], k['pickup'], k['dry'], k['marble']
+        clip, thickness, taper, soft = k['clip'], k['thickness'], k['taper'], k['soft']
+        knife, shape = k.get('knife', False), k.get('shape', 'brush')
         H, W = self.H, self.W
         n, nv = len(g), len(vn)
         nu = int(np.ceil(Li[g].max() / du)) + 1
@@ -597,7 +862,7 @@ class Painting:
         sid = g[:, None]
         w, L = wi[g][:, None], Li[g][:, None]
         p, nrm = self._path(np.broadcast_to(sid, (n, nu)), np.broadcast_to(u, (n, nu)), pos, step)
-        prof = self._profile(u, L, w, taper)                               # (n,nu)
+        prof = self._profile(u, L, w, taper, shape)                        # (n,nu)
         rag = 1 - 0.10 * np.abs(self._tile(u / (w * 1.2) + offs[g, 0:1], offs[g, 1:2] + 0 * u))
         half = (prof * rag)[..., None]
         valid = (u <= L)[..., None] & (np.abs(vn)[None, None, :] <= half)
@@ -625,18 +890,31 @@ class Painting:
         b1 = self._tile(al + offs[s, 0], ac + offs[s, 1])
         b2 = self._tile(al * 0.6 + offs[s, 2], ac + offs[s, 3])
         b3 = self._tile(al * 0.25 + offs[s, 1], ac * 0.45 + offs[s, 2])
-        amt = load * (1 - runout[s] * un ** 1.5) * (1 + 0.42 * b1)
-        edge = self._profile(uu, Ls, ws, taper) - np.abs(vv)               # distance inside the footprint
+        edge = self._profile(uu, Ls, ws, taper, shape) - np.abs(vv)        # distance inside the footprint
         py_, px_ = np.divmod(pp, W)
         tooth = self.tooth[py_, px_]
-        need = (1 - tooth) * (dry + 0.35 * un * un) * 1.5
-        cov = smoothstep(need - 0.18, need + 0.18, amt - 0.3)
-        a = opacity * cov * smoothstep(0.0, np.maximum(soft, 1.2 / ws), edge)
+        if knife:
+            # a blade lays an even slab and skips whole patches where it rides over the tooth
+            amt = load * (1 - 0.45 * runout[s] * un * un) * (1 + 0.12 * b3)
+            skip = smoothstep(0.35, 1.1, b2 * 0.8 + (1 - tooth) - 0.35) * (0.25 + 2.2 * dry + 0.6 * un)
+            cov = smoothstep(-0.06, 0.06, amt - 0.3 - skip)
+            a = opacity * cov * smoothstep(0.0, np.maximum(0.25 * soft, 1.0 / ws), edge)
+            b1 = 0.3 * b3
+        elif shape == 'round':
+            amt = load * (1 + 0.25 * b1)
+            cov = smoothstep(-0.18, 0.18, amt - 0.3 - (1 - tooth) * dry * 1.5)
+            a = opacity * cov * smoothstep(0.0, np.maximum(soft, 1.2 / ws), edge)
+        else:
+            amt = load * (1 - runout[s] * un ** 1.5) * (1 + 0.42 * b1)
+            need = (1 - tooth) * (dry + 0.35 * un * un) * 1.5
+            cov = smoothstep(need - 0.18, need + 0.18, amt - 0.3)
+            a = opacity * cov * smoothstep(0.0, np.maximum(soft, 1.2 / ws), edge)
         if clip > 0:
             a = a * (1 - clip + clip * mask[py_, px_])
 
         # wet-into-wet: the bristle has been dragging through the paint behind it
-        qs = q1[s] + (q2[s] - q1[s]) * (marble * smoothstep(-0.3, 1.3, b3))[:, None]
+        streak = smoothstep(0.0, 0.25, b3) if knife else smoothstep(-0.3, 1.3, b3)   # a knife leaves hard bands
+        qs = q1[s] + (q2[s] - q1[s]) * (marble * streak)[:, None]
         if pickup > 0:
             qc = np.zeros_like(qs)
             wc = np.zeros(len(pp), F32)
@@ -652,9 +930,18 @@ class Painting:
         a3 = a[:, None]
         self.q[py_, px_] = self.q[py_, px_] * (1 - a3) + qs * a3
         body = thickness * self.px * (0.55 + 0.45 * np.sqrt(ws / (30 * self.px)))
-        ridge = 0.45 * np.exp(-((edge - 0.05) / 0.06) ** 2) * (un > 0.03)             # paint squeezed to the sides
-        t = body * a * (0.5 * np.clip(amt, 0, 2) + 0.22 * b1 + ridge + 0.35 * un * (un < 0.97))
-        self.h[py_, px_] = self.h[py_, px_] * (1 - 0.65 * a) + np.maximum(t, 0)
+        if knife:                                                         # a flat plateau, a lip where the blade lifts
+            ridge = 1.3 * np.exp(-((edge - 0.02) / 0.03) ** 2) + 0.9 * smoothstep(0.86, 0.98, un)
+            t = body * a * (1.0 * np.clip(amt, 0, 2) + 0.1 * b3 + ridge)
+            flatten = 0.92
+        elif shape == 'round':                                            # a blob, highest off-centre
+            t = body * a * (0.4 + 1.1 * np.clip(edge / 0.5, 0, 1) ** 0.6 + 0.2 * b1 + 0.5 * smoothstep(0.5, 0.9, un))
+            flatten = 0.8
+        else:
+            ridge = 0.45 * np.exp(-((edge - 0.05) / 0.06) ** 2) * (un > 0.03)        # paint squeezed to the sides
+            t = body * a * (0.5 * np.clip(amt, 0, 2) + 0.22 * b1 + ridge + 0.35 * un * (un < 0.97))
+            flatten = 0.65
+        self.h[py_, px_] = self.h[py_, px_] * (1 - flatten * a) + np.maximum(t, 0)
         self.wet[py_, px_] = self.wet[py_, px_] * (1 - a) + a
 
     # ---- bigger gestures --------------------------------------------------------------
@@ -677,11 +964,66 @@ class Painting:
         m = (np.clip(self._field(mask), 0, 1) * strength)[..., None]
         gq = rgb_to_q(self._field(color, 3))
         self.q = np.sqrt(self.q * self.q + m * gq * gq).astype(F32)
+        if self.tape is not None:
+            st = max(1, self.H // 256)
+            self.tape.append(dict(op='glaze', mask=(m[::st, ::st, 0] * 255).astype(np.uint8),
+                                  color=(self._field(color, 3)[::st, ::st] * 255).astype(np.uint8)))
         self._frame()
 
     def dry(self, amount=1.0):
         """Let the surface set: later strokes drag less of it (1 = touch dry)."""
         self.wet *= (1 - amount)
+        if self.tape is not None:
+            self.tape.append(dict(op='dry', amount=float(amount)))
+
+    # ---- stopping and coming back ----------------------------------------------------
+    def checkpoint(self, path):
+        """Save the wet canvas so a later run can carry on from here (Painting.resume)."""
+        meta = dict(W=self.W, H=self.H, seed=self.seed, weave=self.weave, n_strokes=self.n_strokes, knife=self.knife,
+                    ground=[float(v) for v in self._ground], palette=self.gamut.tubes if self.gamut else None,
+                    rng=self.rng.bit_generator.state)
+        np.savez(path, q=self.q.astype(np.float16), h=self.h, wet=(self.wet * 255).astype(np.uint8),
+                 meta=json.dumps(meta))
+        return path
+
+    @classmethod
+    def resume(cls, path, film=False, log=True, tape=False):
+        """A Painting exactly as checkpoint() left it."""
+        d = np.load(path, allow_pickle=False)
+        m = json.loads(str(d['meta']))
+        p = cls(m['W'], m['H'], seed=m['seed'], ground=m['ground'], weave=m['weave'], film=film, log=log,
+                palette=m['palette'], tape=tape, knife=m.get('knife', False))
+        p.q, p.h, p.wet = d['q'].astype(F32), d['h'].astype(F32), d['wet'].astype(F32) / 255
+        p.n_strokes = m['n_strokes']
+        p.rng.bit_generator.state = m['rng']
+        return p
+
+    def look(self, path, study=None, width=1600):
+        """Write a sheet for judging the canvas: the painting, and with `study` the study beside
+        it, both again small and in grey (the squint test), and a map of where they still differ."""
+        img = self.render()
+        if study is None:
+            sheet = img
+        else:
+            st = np.clip(np.asarray(study, F32), 0, 1)
+            g = np.array([0.299, 0.587, 0.114], F32)
+            err = blur(np.sqrt(((self.view() - st) ** 2).mean(-1)), 0.006 * self.H)
+            e = np.clip(err / 0.25, 0, 1)[..., None]
+            heat = (1 - e) * 0.12 + e * np.array([1.0, 0.25, 0.1], F32) + 0.25 * (img @ g)[..., None] * (1 - e)
+            k = 3
+            small = lambda a_: np.asarray(Image.fromarray((np.clip(a_, 0, 1) * 255).astype(np.uint8)).resize(
+                (self.W // k, self.H // k), Image.LANCZOS), F32) / 255
+            grey = lambda a_: np.repeat((a_ @ g)[..., None], 3, -1)
+            top = np.concatenate([img, st], 1)
+            row = np.concatenate([small(grey(img)), small(grey(st)), small(heat)], 1)
+            row = np.asarray(Image.fromarray((row * 255).astype(np.uint8)).resize(
+                (top.shape[1], round(row.shape[0] * top.shape[1] / row.shape[1])), Image.LANCZOS), F32) / 255
+            sheet = np.concatenate([top, row], 0)
+        im = Image.fromarray((np.clip(sheet, 0, 1) * 255 + 0.5).astype(np.uint8))
+        if im.width > width:
+            im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
+        im.save(path, quality=90) if str(path).lower().endswith(('.jpg', '.jpeg')) else im.save(path)
+        return path
 
     # ---- output -----------------------------------------------------------------------
     def render(self, relief=1.0, gloss=0.35, light=(-0.55, -0.62), scale=1.0):
@@ -715,20 +1057,27 @@ class Painting:
         return path
 
     def _frame(self):
-        if self._film is None:
+        if self._film is None and self._film_dir is None:
             return
         st = max(1, int(round(max(self.W, self.H) / self._film_px)))
         sub = Painting.__new__(Painting)
         sub.q, sub.h, sub.tooth = self.q[::st, ::st], self.h[::st, ::st] / st, self.tooth[::st, ::st]
         sub.px, sub.weave = self.px / st, self.weave
-        self._film.append((sub.render() * 255 + 0.5).astype(np.uint8))
+        fr = (sub.render() * 255 + 0.5).astype(np.uint8)
+        if self._film_dir:
+            n = len(glob.glob(os.path.join(self._film_dir, '*.jpg')))
+            Image.fromarray(fr).save(os.path.join(self._film_dir, f'{n:06d}.jpg'), quality=92)
+        else:
+            self._film.append(fr)
 
     def film(self, path, seconds=8.0, hold=2.0, fps=30):
         """Write the painting's progress, one frame per sitting, as an mp4 (or .gif)."""
-        if not self._film:
-            raise RuntimeError("construct the Painting with film=True to record frames")
+        if self._film is None and self._film_dir is None:
+            raise RuntimeError("construct the Painting with film=True (or film='folder') to record frames")
         self._frame()
         fr = self._film
+        if self._film_dir:
+            fr = [np.asarray(Image.open(f).convert('RGB')) for f in sorted(glob.glob(os.path.join(self._film_dir, '*.jpg')))]
         n = max(int(seconds * fps), 1)
         pick = [fr[min(int((i / n) ** 1.0 * len(fr)), len(fr) - 1)] for i in range(n)] + [fr[-1]] * int(hold * fps)
         h, w = fr[0].shape[:2]

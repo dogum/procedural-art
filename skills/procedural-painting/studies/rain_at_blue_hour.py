@@ -1,7 +1,7 @@
 """Rain at blue hour: a wet street between two rows of houses, lamps coming on, two people
 under a red umbrella. Painted from imagination; nothing is traced or sampled from an image.
 
-    python rain_at_blue_hour.py --out rain.png [--height 1600] [--film rain.mp4] [--study study.png]
+    python rain_at_blue_hour.py --out rain.png [--height 1600] [--film rain.mp4] [--study study.png] [--tape out.tape]
 """
 import argparse
 import os
@@ -18,13 +18,14 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--out', default='rain_at_blue_hour.png')
 ap.add_argument('--height', type=int, default=1000)
 ap.add_argument('--film', default=None)
+ap.add_argument('--tape', default=None, help='also save the stroke tape (for the browser player)')
 ap.add_argument('--study', default=None, help='also save the flat colour study the painter works from')
 ap.add_argument('--seed', type=int, default=11)
 a = ap.parse_args()
 
 H = a.height
 W = int(H * 1.5)
-p = Painting(W, H, seed=a.seed, ground='#6b4a3a', film=bool(a.film))
+p = Painting(W, H, seed=a.seed, ground='#6b4a3a', film=bool(a.film), tape=bool(a.tape))
 x, y = p.x, p.y
 rng = np.random.default_rng(a.seed)
 HOR, VX = 0.50, 0.60                        # horizon and vanishing point
@@ -109,7 +110,7 @@ shop_lit_R = shopR & bays(tR, 3.2) & (np.sin(np.floor(-np.log(np.maximum(1 - tR 
 for m_, tt, c0, c1 in ((shop_lit_L, tL, '#ffc163', '#f2741e'), (shop_lit_R, tR, '#ffd28a', '#ef8a2e')):
     v = p.noise(0.05, 2, seed=31)
     curb, roof = (curbL, roofL) if m_ is shop_lit_L else (curbR, roofR)
-    up = np.clip((curb - y) / (0.3 * (curb - roof)), 0, 1)             # 0 at the pavement, 1 at the awning
+    up = np.clip((curb - y) / np.maximum(0.3 * (curb - roof), 1e-6), 0, 1)             # 0 at the pavement, 1 at the awning
     shop = lerp(rgb(c1), rgb(c0), smoothstep(-0.8, 0.8, v + 1.2 * up - 0.5))
     shop = lerp(rgb('#7a3a22'), shop, smoothstep(0.0, 0.22, up))        # stall riser under the glass
     cc = -np.log(np.maximum(1 - tt * 0.985, 1e-3)) * (4.0 if m_ is shop_lit_L else 3.2)
@@ -274,3 +275,6 @@ p.marks([[(lx - 0.004 * s, ly - 0.004 * s), (lx + 0.007 * s, ly + 0.003 * s)] fo
 p.save(a.out)
 if a.film:
     p.film(a.film)
+if a.tape:
+    from tape import save_tape
+    print(f"wrote {a.tape}  {save_tape(p, a.tape, title='Rain at blue hour') / 1e6:.2f} MB")

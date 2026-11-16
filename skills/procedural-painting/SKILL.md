@@ -13,22 +13,31 @@ You are the painter. `scripts/atelier.py` is the paint, the brushes and the canv
 
 | Tool | Does | Time on 1 CPU |
 |---|---|---|
-| a study script importing `scripts/atelier.py` | An original painting of any subject | 10 s at 1200×800 · about 70 s at 2400×1600 |
-| `scripts/repaint.py` | Repaints an existing image (a render from the other skills, a photo) with the same paint | 15 s at 1800×600 |
+| `scripts/sitting.py` + `scripts/atelier.py` | An original painting of any subject, painted in sittings with a look at the canvas between them | 10 to 20 s per look at 1200×800 · 1 to 3 min for a 2400×1600 final |
+| `scripts/repaint.py` | Repaints an existing image with the same paint; with `--aov` it paints a real mountain by its ground (fall lines, snow, water) | 15 s at 1800×600 |
+| `scripts/tape.py` | Exports the stroke list so the painting can paint itself live in a browser (`docs/paint`) | under 1 s |
 
 Requirements: Python 3 with numpy, scipy and pillow; ffmpeg for the process film. Work in a writable folder and call scripts by path. In the commands below `SK` is this skill's folder and `S=$SK/scripts`.
 
-Three finished paintings live in `studies/`. Read one before writing your own: `rain_at_blue_hour.py` (night street, lamps, reflections, figures), `lemons_and_blue_jug.py` (still life, form and cast shadows), `wind_over_the_barley.py` (daylight landscape, clouds). Each runs as `python $SK/studies/NAME.py --out out.png [--height 1600] [--film out.mp4] [--study study.png]`.
+Four finished paintings live in `studies/`. Read one before writing your own: `harbour_at_first_light.py` (painted in sittings; limited palette, boats, water, drawn rigging), `rain_at_blue_hour.py` (night street, lamps, reflections, figures), `lemons_and_blue_jug.py` (still life, form and cast shadows), `wind_over_the_barley.py` (daylight landscape, clouds). Each runs as `python $SK/studies/NAME.py --out out.png [--height 1600] [--film out.mp4] [--study study.png] [--tape out.tape]`.
 
 ## How a painting is made
 
-Work the way a painter does, and look at the picture at every step. The looking is the method: most of the quality comes from the corrections you make after seeing a draft.
+Paint in sittings and look at the canvas after each one. The looking is the method: most of the quality comes from what you change after seeing the picture, so never write all the passes blind and render once.
 
-1. **Decide the picture in words first.** Subject, format, where the horizon or table edge sits, where the light comes from, the two or three colours that carry it (one dominant, one opposing accent), and the single place the eye should land. Write it in the script's docstring.
-2. **Build the colour study.** With numpy, on the coordinate fields `p.x` (0 to aspect) and `p.y` (0 at the top to 1), compute one H×W×3 image of flat intended colour: gradients for sky and ground, signed-distance shapes for objects (`sd_circle`, `sd_ellipse`, `sd_box`, `sd_segment`, `sd_poly`, `sd_curve`, joined with `np.minimum` or `smin`, turned into masks with `fill`), light and shadow computed from the shapes, noise for variation. Save it with `--study` and look at it. Fix drawing, values and colour here, where a change costs one second. Squint test: shrink it to 300 px; if the subject and the light don't read, no brushwork will rescue it.
-3. **Paint it in masses, back to front, big brush first.** One thin lay-in over the whole canvas, then each mass with `p.mass(mask, study, flow=..., sizes=(big, medium, small))`. Give every mass its own brush direction: sweeps across a sky, upright pulls down a wall, around a round form, along a wave. This is what an image filter cannot do, and it is most of why the result reads as painted.
-4. **Lights and drawn marks last.** Thick clean highlights (`thickness=2.5`, `pickup` near 0) and single deliberate strokes with `p.marks(...)` for posts, masts, branches, stems.
-5. **Draft at `--height 800`, look, criticise, fix; then render the final at 1600 or more.** Sizes are fractions of the picture height, so a draft is the final picture seen smaller. Look at a 1:1 crop of the final before showing it.
+```bash
+python $S/sitting.py work/harbour --init 1200x800 --ground "#8a6f5a" --seed 5    # canvas.json + an empty study.py
+python $S/sitting.py work/harbour        # runs study.py and every sitting not yet run; writes look.jpg
+```
+
+1. **Decide the picture in words first.** Subject, format, where the horizon or table edge sits, where the light comes from, the two or three colours that carry it (one dominant, one opposing accent), and the single place the eye should land. Write it as the docstring of `study.py`.
+2. **Build the colour study in `study.py`.** With numpy, on the coordinate fields `x` (0 to aspect) and `y` (0 at the top to 1), compute `study`, one H×W×3 image of flat intended colour: gradients for sky and ground, shapes for objects (`sd_circle`, `sd_ellipse`, `sd_box`, `sd_segment`, `sd_poly`, `sd_curve`, `lathe`, joined with `np.minimum` or `smin`, turned into masks with `fill`), light and shadow from `shade` and `cast_shadow`, noise for variation. Define here every mask and direction field the sittings will share. Run `sitting.py` and read `look.jpg`: fix drawing, values and colour now, where a change costs seconds. If the subject and the light don't read in the small grey panel, no brushwork will rescue it.
+3. **Add one sitting file at a time**, named so they sort (`10_lay_in.py`, `20_sky.py`, `30_water.py`, ...), each a few `p.strokes` / `p.mass` / `p.marks` calls with a comment saying what the sitting is for. Back to front, big brush first: a thin lay-in over everything, then each mass with its own brush direction (sweeps across a sky, upright pulls down a wall, round a form, level across water). That direction per mass is what an image filter cannot do and is most of why the result reads as painted.
+4. **Run `sitting.py` and read `look.jpg` after every sitting.** It shows the canvas beside the study, both again small and grey (the squint test), and a map of where they differ; `looks/NAME.jpg` keeps the canvas after each sitting. Criticise it as a painter would (muddy sky? edges all the same? strokes poking over an outline? focal point lost?), then either edit that sitting's file and run again (only the changed sittings replay), or move on.
+5. **Lights and drawn lines in the last sitting.** Thick clean highlights (`thickness` 2.5 and up, `pickup` near 0), `p.dabs` for single touches, `p.marks` for masts, posts, stems and branches.
+6. **Final and bundle.** `python $S/sitting.py work/harbour --final 1600 --out harbour.png --film harbour.mp4` replays every sitting at full size (sizes are fractions of the picture height, so the draft is the final seen smaller). Look at a 1:1 crop before showing it. `--bundle harbour.py` writes the whole painting as one standalone script.
+
+Names shared between sittings must be defined in `study.py`: it runs before every sitting, while earlier sittings are restored from a checkpoint and not run again. Give `p.noise` a `seed` in `study.py` so the study is the same on every run.
 
 Tell the user what you decided in step 1 when you show the picture, and offer the film.
 
@@ -47,12 +56,18 @@ p.mass(jug_mask, study, flow=around(x, y, 0.7, 0.5), sizes=(0.03, 0.014, 0.006),
 p.dry(0.6)                                     # let it set before the clean top notes
 p.strokes(highlight_mask, study, size=0.012, length=2.5, pickup=0.1, load=1.3, thickness=2.6)
 p.marks([[(0.33, 0.18), (0.33, 0.80)]], '#14142a', size=0.008)        # one pulled line
+p.dabs([(0.4, 0.3)], 'titanium white', size=0.02, thickness=3)        # one loaded touch
+p.cut_in(objects_mask, study)                  # background painted back up to the outlines
 p.save('out.png'); p.film('out.mp4')           # film needs Painting(..., film=True)
 ```
 
 - `p.strokes(mask, color, flow, size, ...)` lays one pass of one brush size. `color` is the study (each stroke takes the colour under its start), a triple, a hex string or a pigment name. `flow` is the brush direction in radians, a number or an H×W field (`around`, `along(field)` to follow contour lines, `across(field)` to run downhill, or your own formula).
 - `p.mass(...)` is the block-in plus refining passes: the first size covers the mask, later sizes go only where the canvas is still further than `tol` from the study.
-- `p.marks(lines, color, size)` draws each polyline once, in order. `curve(points)` gives a smooth line through points.
+- `p.marks(lines, color, size)` draws each polyline once, in order. `curve(points)` gives a smooth line through points. `p.dabs(points, color, size, stretch)` lays single round touches (petals and leaves with `stretch` above 1).
+- `size` may be an H×W field, so strokes shrink into the distance in one pass: `size=0.004 + 0.03 * near` with `gu, gv, near = ground_plane(x, y, horizon)`. `p.ground_noise(horizon, ...)` is noise lying on that ground.
+- Forms: `ellipsoid_normal` and `lathe` (a jug, bottle or vase from its profile) give normals; `shade(n, light, lit, half, core, refl)` gives the light families; `specular` the highlight; `cast_shadow` a shadow lying on the table. `flow_ellipse` and `flow_lathe` are the brush directions for those forms.
+- `knife=True` on any pass lays it with a palette knife (flat slabs, hard edges, ridges, skipped patches); `Painting(knife=True)` or `--knife` does the whole picture that way.
+- `Painting(palette=['yellow ochre', 'vermilion', 'ivory black', 'titanium white'])` limits every colour on the brush to what those tubes can mix (that one is the Zorn palette). Three to six tubes give a picture an automatic harmony; `p.gamut.project(study)` previews the study through the palette.
 - `p.glaze(mask, color, strength)` adds a transparent film (it darkens and tints, as a glaze does). `p.dry(amount)` stops later strokes dragging what is underneath.
 - Colour helpers: `mix(a, b, t)` mixes two colours as pigments, `lerp` blends as light (both take an H×W weight as it is; don't add a trailing axis), `palette({'ultramarine': 2, 'burnt sienna': 1, 'titanium white': 3})` mixes tube colours by parts, `rgb('cobalt blue')` looks one up. `p.noise(scale, octaves, seed)` is smooth noise.
 
@@ -79,11 +94,18 @@ python $S/repaint.py --in render.png --out painted.png --height 1600 [--loosenes
 
 The image supplies the colours; brush direction follows its edges. This is the quick way to put a photo or a render on canvas with pigment mixing and relief. It has no idea what the objects are, so a composed study script will always look more intended.
 
-A real mountain painted by depth: render it with `procedural-realism`'s `pbr_terrain.py ... --geom-cache`, post it, then pass the `geom_<hash>` folder from its `--work` folder. The sky goes in first as one swept mass, far ground stays simple, near ground gets broken colour, and the skyline is a found edge. `--push` (default 1 with `--geom`) is the painter's eye: more chroma, warmer lights, cooler shadows.
+A real mountain painted by its ground: render it with `procedural-realism`'s `pbr_terrain.py ... --aov`, post it, then pass the `aov` folder inside the band folder. The sky is swept in as one mass, slopes are painted with strokes running down the fall lines, plains level, snow late and thick, water dragged straight down and cut across, and the skyline is cut in. `--push` (default 1 here) is the painter's eye: more chroma, warmer lights, cooler shadows. `--geom` (depth only) remains for renders made with `--geom-cache` and no `--aov`.
 
 ```bash
-python $S/repaint.py --in ararat.png --geom work/ararat/geom_d4d184947a --out ararat_oil.png --height 1000
+R=/path/to/procedural-realism/scripts
+python $R/pbr_terrain.py --peak 39.7019,44.2986 --from 40.1792,44.4991 --work work/ararat --size 2400x1000 --sun-el 6 --aov
+python $R/post_terrain.py --bands work/ararat/bands_2400x1000 --out ararat.png
+python $S/repaint.py --in ararat.png --aov work/ararat/bands_2400x1000/aov --out ararat_oil.png --height 1000
 ```
+
+## Watching it paint in a browser
+
+Every study takes `--tape FILE` (and `sitting.py --final ... --tape FILE`): the stroke list in a 0.7 to 2 MB file. The page in `docs/paint` holds a JavaScript port of the simulator and lays the strokes again live, at any size, with a movable light. It is not a video. To add a painting there, export to `docs/paint/tapes/NAME.tape` and add `{ id: 'NAME', title: '...' }` to `PAINTINGS` in `docs/paint/app.js`. In your own script: `Painting(..., tape=True)`, then `from tape import save_tape; save_tape(p, 'x.tape', title='...')`.
 
 ## Limits
 

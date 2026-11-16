@@ -2,7 +2,7 @@
 a dark table, window light from the upper left. Painted from imagination; nothing is traced or
 sampled from an image.
 
-    python lemons_and_blue_jug.py --out lemons.png [--height 1600] [--film lemons.mp4] [--study study.png]
+    python lemons_and_blue_jug.py --out lemons.png [--height 1600] [--film lemons.mp4] [--study study.png] [--tape out.tape]
 """
 import argparse
 import os
@@ -19,13 +19,14 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--out', default='lemons_and_blue_jug.png')
 ap.add_argument('--height', type=int, default=1000)
 ap.add_argument('--film', default=None)
+ap.add_argument('--tape', default=None, help='also save the stroke tape (for the browser player)')
 ap.add_argument('--study', default=None, help='also save the flat colour study the painter works from')
 ap.add_argument('--seed', type=int, default=5)
 a = ap.parse_args()
 
 H = a.height
 W = int(H * 1.25)
-p = Painting(W, H, seed=a.seed, ground='#5a3b26', film=bool(a.film))
+p = Painting(W, H, seed=a.seed, ground='#5a3b26', film=bool(a.film), tape=bool(a.tape))
 x, y = p.x, p.y
 LIGHT = np.array([-0.70, -0.56, 0.44], F32)          # from the upper left, a little in front
 LIGHT /= np.linalg.norm(LIGHT)
@@ -320,3 +321,6 @@ p.marks([ring], '#fbf4d2', size=0.0045, pickup=0.2, load=1.3, thickness=1.6, tap
 p.save(a.out)
 if a.film:
     p.film(a.film)
+if a.tape:
+    from tape import save_tape
+    print(f"wrote {a.tape}  {save_tape(p, a.tape, title='Lemons and a blue jug') / 1e6:.2f} MB")

@@ -79,7 +79,27 @@ jobs:
         run: |
           SK="$GITHUB_WORKSPACE/skills/procedural-painting"
           python "$SK/studies/rain_at_blue_hour.py" --height 400 --out out/rain_at_blue_hour.png
+          python "$SK/studies/harbour_at_first_light.py" --height 300 --out out/harbour.png --tape out/harbour.tape
           python "$SK/scripts/repaint.py" --in out/fuji_pbr.png --out out/fuji_repainted.png --height 300
+      - name: Painting in sittings (init, two sittings, resume, final, bundle)
+        working-directory: ${{ runner.temp }}
+        run: |
+          S="$GITHUB_WORKSPACE/skills/procedural-painting/scripts"
+          python "$S/sitting.py" work/sit --init 600x400 --palette "ultramarine, burnt sienna, titanium white"
+          echo "study = lerp(rgb('cerulean'), rgb('naples yellow'), smoothstep(0.2, 0.8, y))" >> work/sit/study.py
+          echo "p.strokes(np.ones_like(x), study, size=0.08, pickup=0)" > work/sit/10_lay_in.py
+          python "$S/sitting.py" work/sit
+          echo "p.dabs([(0.75, 0.5)], 'titanium white', size=0.05)" > work/sit/20_sun.py
+          python "$S/sitting.py" work/sit | grep "resuming after 10_lay_in.py"
+          python "$S/sitting.py" work/sit --final 300 --out out/sittings.png
+          python "$S/sitting.py" work/sit --bundle work/sit_bundle.py
+      - name: A real mountain painted by its ground (--aov)
+        working-directory: ${{ runner.temp }}
+        run: |
+          R="$GITHUB_WORKSPACE/skills/procedural-realism/scripts"
+          python "$R/pbr_terrain.py" --peak 35.3606,138.7274 --from 35.5100,138.7550 --size 300x100 --work work/fuji --tag aov --aov
+          python "$R/post_terrain.py" --bands work/fuji/bands_300x100_aov --out out/fuji_aov.png
+          python "$GITHUB_WORKSPACE/skills/procedural-painting/scripts/repaint.py" --in out/fuji_aov.png --aov work/fuji/bands_300x100_aov/aov --out out/fuji_aov_oil.png --height 300
       - uses: actions/upload-artifact@v7
         with:
           name: smoke-renders

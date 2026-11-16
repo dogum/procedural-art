@@ -81,6 +81,9 @@ ap.add_argument("--seed", type=int, default=1, help="seed for trees / villages /
 ap.add_argument("--city", type=float, default=0.0, help="night city density 0..1: street lights, lit windows, sky glow (0 = off)")
 ap.add_argument("--city-km", type=float, default=12.0, help="city lights extend this far from the camera")
 ap.add_argument("--geom-cache", action="store_true", help="cache sun-independent geometry per band (speeds up sun-angle timelapses)")
+ap.add_argument("--aov", action="store_true",
+                help="also save painter buffers per band in <bands>/aov (depth, fall-line direction, slope, elevation, "
+                     "snow, water, cloud) for procedural-painting's repaint.py --aov; the picture itself is unchanged")
 ap.add_argument("--streets", default="osm", choices=["osm", "grid"],
                 help="with --city: real streets from OpenStreetMap (needs network the first time; falls back to grid) or a synthetic grid")
 ap.add_argument("--traffic", type=float, default=0.5, help="with --city and OSM streets: car lights on major roads, 0..1 (0 = off)")
@@ -101,14 +104,14 @@ PHYS = a.sky == "physical"
 W, H = map(int, a.size.lower().split("x"))
 os.makedirs(a.work, exist_ok=True)
 BANDS = os.path.join(a.work, f"bands_{W}x{H}" + (f"_{a.tag}" if a.tag else "")); os.makedirs(BANDS, exist_ok=True)
-AUX = os.path.join(BANDS, "aux")
+AUX = os.path.join(BANDS, "aux"); AOV = os.path.join(BANDS, "aov")
 LA0, LO0 = map(float, a.peak.split(",")); VLA, VLO = map(float, a.view_from.split(","))
 KX, KY = 111.32 * math.cos(math.radians(LA0)), 110.57
 RE = 6371.0 * 7 / 6
 
 # every argument that changes pixels is recorded; resuming with different ones would mix two pictures.
 # --aperture / --focus are post effects (post_terrain.py can override them); only "is there a lens" matters here.
-_pkeys = {k: v for k, v in vars(a).items() if k not in ("rows", "work", "dem", "tag", "geom_cache", "aperture", "focus")}
+_pkeys = {k: v for k, v in vars(a).items() if k not in ("rows", "work", "dem", "tag", "geom_cache", "aperture", "focus", "aov")}
 _pkeys["depth_aux"] = a.aperture > 0
 if a.city <= 0:                                                            # city-only settings don't split daylight renders
     for _k in ("streets", "traffic", "shutter"): _pkeys.pop(_k)
@@ -828,6 +831,39 @@ exec_extras = os.path.join(os.path.dirname(os.path.abspath(__file__)), "terrain_
 if TREES_ON or VILLAGES_ON or CITY_ON or CLOUD_LAYER_ON:
     exec(compile(open(exec_extras).read(), exec_extras, "exec"))
 
+# ------------------------------------------------------------------ painter buffers (--aov)
+def save_aov(r0, r1, dirs, t, hit, wat, cloud, inst):
+    """What a painter needs to know about each pixel, in image space. One .npz per band, written before the band
+    itself so a band on disk always has its buffers. Angles use the image convention: 0 = +x, pi/2 = down."""
+    N = len(dirs); shp = (r1 - r0, W)
+    fall = np.zeros(N, np.float32); slope = np.zeros(N, np.float32); elev = np.zeros(N, np.float32); snow = np.zeros(N, np.float32)
+    ter = np.where(hit & ~wat)[0]
+    if len(ter):
+        P = CAM + dirs[ter] * t[ter, None]; x, y = P[:, 0], P[:, 1]
+        e = np.clip(t[ter] * PIXA * 6, 0.06, 0.6)                           # landform scale: at least 60 m, about 12 px
+        gx = (hf(x + e, y) - hf(x - e, y)) / (2 * e); gy = (hf(x, y + e) - hf(x, y - e)) / (2 * e)
+        g = np.hypot(gx, gy)
+        d3 = np.stack([-gx, -gy, -g * g], 1) / np.maximum(g * np.sqrt(1 + g * g), 1e-9)[:, None]   # unit, downhill
+        def scr(Q):
+            q = Q - CAM; zc = np.maximum(q @ fwd, 1e-6)
+            return fl * (q @ right) / zc, -fl * (q @ up) / zc
+        st = np.minimum(e, 0.25 * t[ter])[:, None]
+        ax, ay = scr(P); bx, by = scr(P + d3 * st)
+        fall[ter] = np.arctan2(by - ay, bx - ax); slope[ter] = g
+        n, sl = terrain_normal(x, y, t[ter])
+        _, z, sn = terrain_albedo(x, y, n, sl, t[ter])
+        elev[ter] = z; snow[ter] = np.clip(np.asarray(sn).reshape(-1), 0, 1)
+    wi = np.where(wat)[0]
+    if len(wi): elev[wi] = WL
+    near = np.zeros(N, np.float32)
+    if inst is not None and len(inst[0]): near[inst[0]] = inst[3]
+    os.makedirs(AOV, exist_ok=True)
+    f = os.path.join(AOV, f"{r0:05d}.npz")
+    np.savez(f[:-4] + ".tmp.npz", depth=np.where(hit, t, np.inf).reshape(shp).astype(np.float32), hit=hit.reshape(shp),
+             fall=fall.reshape(shp), slope=slope.reshape(shp), elev=elev.reshape(shp), snow=snow.reshape(shp),
+             water=wat.reshape(shp), cloud=cloud.reshape(shp).astype(np.float32), near=near.reshape(shp))
+    os.replace(f[:-4] + ".tmp.npz", f)
+
 # ------------------------------------------------------------------ render
 def render_rows(r0, r1):
     ys, xs = np.mgrid[r0:r1, 0:W]
@@ -884,6 +920,7 @@ def render_rows(r0, r1):
             img[sky] += mdisc[sky, None] * sun_T_lut(np.array([CAM[2]]), np.array([math.sin(MOON_EL)]))[0] * MOON_I / SUN_I * 2500
     Lin, Tv = atmosphere(dirs, tmax); img = img * Tv + Lin
     if star is not None: star *= Tv
+    cloud_a = np.zeros(N)
     if inst is not None and len(inst[0]):
         ids, ti, ci, cov = inst                                              # anti-aliased: blend by sub-pixel coverage
         Li, Ti = atmosphere(dirs[ids], ti)
@@ -892,6 +929,7 @@ def render_rows(r0, r1):
         if star is not None: star[ids] *= (1 - cov[:, None])
     if a.cloud:
         cc, ct = march_cloud(dirs, tmax)
+        cloud_a = 1 - ct
         ci_ = np.where((ct < 1) | (cc.max(1) > 0))[0]                     # only rays that touch the cloud change
         if len(ci_):
             Lc, Tc = atmosphere(dirs[ci_], np.minimum(tmax[ci_], np.linalg.norm(CL_C - CAM)))
@@ -899,6 +937,7 @@ def render_rows(r0, r1):
         if star is not None: star *= ct[:, None]
     if CLOUD_LAYER_ON:
         img = apply_cloud_layer(dirs, tmax, img, extra=star)
+    if a.aov: save_aov(r0, r1, dirs, t, hit, wat, cloud_a, inst)
     if star is not None:
         os.makedirs(AUX, exist_ok=True)
         np.save(os.path.join(AUX, f"{r0:05d}_stars.npy"), star.reshape(r1 - r0, W, 3).astype(np.float32))
@@ -951,7 +990,10 @@ if __name__ == "__main__":
     # bands sit on a fixed grid of `step` rows; missing rows inside [r0, r1) are rendered in pieces that stop at
     # grid lines and at rows already on disk, so chunks of any size and full runs can be mixed without gaps
     step = max(8, 60000 // W); t0 = time.time()
-    _, cov = band_coverage()
+    have, cov = band_coverage()
+    if a.aov:                                                                # a band without its buffers is rendered again
+        for s0, n in have.items():
+            if not os.path.exists(os.path.join(AOV, f"{s0:05d}.npz")): cov[s0:s0 + n] = False
     want = np.zeros(H, bool); want[r0:r1] = True
     for m0, m1 in spans(want & ~cov):
         for r in range(m0, m1):

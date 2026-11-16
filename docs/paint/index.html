@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Oil paintings that paint themselves in your browser, stroke by stroke. A paint simulator, not a video: pigment mixing, bristles, wet paint and relief, computed live.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26 L12 10 L17 17 L21 12 L30 26 Z' fill='%23d8935c'/%3E%3C/svg%3E">
+<title>Watch it paint · procedural-art</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="paint.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span><b>procedural-art</b> · the easel</span><nav aria-label="Site"><a href="../#paintings">Paintings</a><a href="../app/">Any mountain</a><a href="https://github.com/dogum/procedural-art">GitHub</a></nav></div>
+  <h1>Watch it <span class="thin">paint</span></h1>
+
+  <section class="plate">
+    <div class="margin">
+      <span class="pno">Live</span>
+      <h2 id="title">&nbsp;</h2>
+      <p>This is not a video. The page holds the list of brush strokes the painter made and a paint simulator; your browser lays every stroke again, wet into wet, on a canvas of its own.</p>
+      <p>Move the light to see that the paint has thickness.</p>
+      <div class="data" id="facts">12 bands of pigment per pixel<br>bristles, dry brush, wet-into-wet<br>no image model, no libraries</div>
+    </div>
+    <div class="main">
+      <div class="tabs" role="tablist" aria-label="Painting" id="tabs"></div>
+      <div class="frame">
+        <canvas id="easel" width="1200" height="800" aria-label="The painting, being painted"></canvas>
+        <div class="veil" id="veil">Stretching the canvas…</div>
+      </div>
+      <div class="bar">
+        <button class="primary" id="play" type="button">Pause</button>
+        <button id="restart" type="button">Restart</button>
+        <label>Speed
+          <select id="speed" aria-label="Speed">
+            <option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="max">as fast as it goes</option>
+          </select>
+        </label>
+        <input class="seek" id="seek" type="range" min="0" max="1000" value="0" aria-label="Progress of the painting">
+        <button id="save" type="button">Save PNG</button>
+      </div>
+      <div class="count" id="count" aria-live="off"></div>
+      <div class="lightrow">
+        <div class="dial" id="dial" tabindex="0" role="slider" aria-label="Light direction (arrow keys)" aria-valuetext="upper left"><span class="knob" id="knob"></span></div>
+        <div>
+          <div>Light: drag the dot to move the lamp around the canvas.</div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" id="relief" checked style="width:16px;height:16px;accent-color:var(--contour)"> Paint relief</label>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<script src="atelier.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

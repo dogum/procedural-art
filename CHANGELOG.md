@@ -9,7 +9,13 @@ All notable changes to this project are documented here. Versions follow [semant
 - Pigment mixing: colours are 12-band reflectance spectra mixed on Kubelka-Munk absorption and scattering, so blue into wet yellow goes green and complements grey each other.
 - Bristle strokes that run dry, catch on the canvas weave (dry brush) and drag the wet paint they cross (wet-into-wet); paint relief with ridges and bristle grooves under a raking light; single drawn marks (`marks`), transparent glazes, and a process film of the canvas being painted (`film`).
 - Three finished studies: `rain_at_blue_hour.py`, `wind_over_the_barley.py`, `lemons_and_blue_jug.py`. About 30k strokes and 70–90 s at 2400×1600 on one core.
-- `scripts/repaint.py` repaints an existing image with the same paint. With `--geom` (the geometry cache of a `pbr_terrain.py --geom-cache` render) it paints a real mountain by depth: the sky as one swept mass, far ground kept simple, near ground in broken colour, the skyline as a found edge.
+- Painting in sittings: `scripts/sitting.py` keeps a painting as a folder (`study.py` plus one file per sitting), checkpoints the wet canvas after each sitting and writes a look sheet (canvas, study, both in grey, difference map), so the next sitting is decided after looking; editing a sitting replays only from there. `--final` renders at full size with film and tape, `--bundle` writes one standalone script. A fourth study, `harbour_at_first_light.py`, was painted this way.
+- Form helpers: `lathe` (turned forms from a profile), `ellipsoid_normal`, `shade` (light, halftone, core shadow, reflected light), `specular`, `cast_shadow`, `flow_ellipse`, `flow_lathe`, `ground_plane`, `p.ground_noise`; `along`/`across` take a `fallback` direction for flat areas.
+- `p.dabs` (single round touches, petals), `p.cut_in` (the background painted back up to an outline), brush size as a field (strokes that shrink into the distance in one pass), `p.checkpoint` / `Painting.resume`, `p.look`.
+- Palette knife: `knife=True` on a pass, or on the whole painting. Limited palettes: `Painting(palette=[...])` keeps every colour on the brush inside what a few tubes can mix.
+- Strokes no longer poke over a mask edge, and a soft mask thins strokes instead of turning them into stray dabs.
+- The easel (`docs/paint`): `scripts/tape.py` and `--tape` export a painting's strokes (0.7–2 MB); a JavaScript port of the simulator replays them live in the browser at any size, with a movable light.
+- `scripts/repaint.py` repaints an existing image with the same paint. With `--aov` (the painter buffers of a `pbr_terrain.py --aov` render) it paints a real mountain by its ground: slopes down the fall lines, snow late and thick, water dragged down and cut across, the skyline cut in. With `--geom` (the geometry cache of a `pbr_terrain.py --geom-cache` render) it paints a real mountain by depth: the sky as one swept mass, far ground kept simple, near ground in broken colour, the skyline as a found edge.
 
 ### Web app
 - A mountain picked from the OpenStreetMap suggestions gets its surveyed elevation (OSM `ele`) and native name: Photon search carries neither, so one Nominatim lookup by OSM id fills them in while the elevation tiles load. The label, caption and share link show the surveyed height instead of the elevation-data estimate. `ele` values in feet are converted.
@@ -19,6 +25,7 @@ All notable changes to this project are documented here. Versions follow [semant
 - Fixed a crash in riso and woodcut when a title's script has no installed font (matplotlib 3.11 rejected the `sans-serif` fallback).
 
 ### procedural-realism
+- `pbr_terrain.py --aov` saves painter buffers per band (depth, fall-line direction, slope, elevation, snow, water, cloud, tree coverage) for `procedural-painting`. The picture is unchanged.
 - Timelapse frames render four at a time (`--jobs`, one core each): the first frame fills the caches alone, the rest only read them, and the frames come out bit-identical. A 9-frame draft went from 202 s to 76 s on 4 cores.
 - When OpenStreetMap can't be reached, `--city` remembers it in `<work>/osm` and uses the synthetic streets straight away. Before, every timelapse frame waited minutes on the Overpass mirrors again, and a frame rendered after they recovered switched the city to real streets mid-clip.
 
