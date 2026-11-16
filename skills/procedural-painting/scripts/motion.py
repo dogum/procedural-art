@@ -23,6 +23,7 @@ Without ffmpeg on the machine no film is written and the painted frames are kept
 """
 import argparse
 import glob
+import hashlib
 import os
 import shutil
 import subprocess
@@ -35,7 +36,7 @@ from PIL import Image
 from atelier import Painting, blur, image_flow, load_image, smoothstep, F32
 from repaint import paint_picture, painters_eye
 
-G = {}                                                    # shared with the workers (fork)
+G = {}                                                    # the film's settings; handed to each worker by _init
 
 
 def study_at(i):
@@ -61,9 +62,13 @@ def additions(p, src, k):
               ctol=0.12, overshoot=0.0, refine=0.05 * k, fade=True, name='lights')
 
 
+def _init(state):
+    G.update(state)
+
+
 def render_frame(i):
     out = os.path.join(G['work'], f'{i:05d}.png')
-    if not os.path.exists(out):
+    if not (G['reuse'] and os.path.exists(out)):
         p = Painting(G['W'], G['H'], seed=G['seed'], ground=G['ground'], log=False)
         p.replay(G['tape'], study_at(i))
         p.save(out)
@@ -99,9 +104,19 @@ def main():
     W = int(round(H * im.width / im.height))
     W -= W % 2
     work = a.work or (os.path.splitext(a.out)[0] + '_frames')
+    made_dir = not os.path.isdir(work)
     os.makedirs(work, exist_ok=True)
+    # painted frames left by an earlier run are reused only if that run had the same frames and settings
+    sig = [(os.path.abspath(f), os.path.getsize(f), os.path.getmtime(f)) for f in files]
+    if a.aov:
+        sig += [(os.path.abspath(f), os.path.getsize(f), os.path.getmtime(f)) for f in sorted(glob.glob(os.path.join(a.aov, '*')))]
+    key = hashlib.sha1(repr((sig, W, H, a.keys, a.looseness, a.push, a.ground, a.seed, a.aov)).encode()).hexdigest()
+    stamp = os.path.join(work, 'motion.key')
+    reuse = os.path.exists(stamp) and open(stamp).read().strip() == key
+    with open(stamp, 'w') as f:
+        f.write(key)
     G.update(files=files, W=W, H=H, push=a.push if a.push is not None else (1.0 if a.aov else 0.0),
-             seed=a.seed, ground=a.ground, work=work)
+             seed=a.seed, ground=a.ground, work=work, reuse=reuse)
     k = a.looseness
     t0 = time.time()
 
@@ -126,7 +141,7 @@ def main():
 
     # 3. every frame: all the strokes again with that frame's colours
     todo = list(range(len(files)))
-    with Pool(max(a.jobs, 1)) as pool:
+    with Pool(max(a.jobs, 1), initializer=_init, initargs=(G,)) as pool:
         for n, i in enumerate(pool.imap_unordered(render_frame, todo), 1):
             if n % 20 == 0 or n == len(todo):
                 print(f"painted {n}/{len(todo)} frames, {time.time() - t0:.0f} s", flush=True)
@@ -144,9 +159,10 @@ def main():
                                '[b][p]paletteuse=dither=bayer:bayer_scale=4', a.gif], check=True)
         print(f"wrote {a.gif}")
     if not a.stills:
-        for f in glob.glob(os.path.join(work, '*.png')):
+        for f in [os.path.join(work, f'{i:05d}.png') for i in todo] + [stamp]:      # only what this film wrote
             os.remove(f)
-        os.rmdir(work)
+        if made_dir and not os.listdir(work):
+            os.rmdir(work)
 
 
 if __name__ == '__main__':
