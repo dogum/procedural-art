@@ -313,6 +313,7 @@
     /** Every stroke of a sitting sees the canvas as it was when the sitting began. */
     _snapshot() {
       const { W, H, tw, th, stale } = this;
+      this._mine = null;                                    // the painter carries on: the hand's stroke is part of the canvas now
       for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
         if (!stale[ty * tw + tx]) continue;
         stale[ty * tw + tx] = 0;
@@ -572,6 +573,7 @@
     }
     /** Take the last stroke of the hand off again. */
     undoStroke() { if (this._mine) { this._restore(this._mine); this._mine = null; } }
+    get canUndo() { return !!this._mine; }
 
     get _pad() { return Math.ceil(this._occR) + 3; }
     get _occR() { return Math.max(2, Math.round(3.0 * this.px * 1.6)); }    // box radius matching a 3 px blur

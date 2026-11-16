@@ -83,6 +83,7 @@
       }
       if (relight && !film) { P.paint(ctx, 'light'); relight = false; }
       if (P.finished) fast = false;
+      if (!path && !P.canUndo) $('undo').disabled = true;       // playback moved on, or the canvas started over
       spent += performance.now() - a;
       const tape = P.tape;
       if (film) $('count').innerHTML = film.frames.length < film.n
