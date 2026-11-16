@@ -88,6 +88,12 @@ jobs:
           python "$SK/studies/the_letter.py" --height 300 --out out/the_letter.png
           python "$SK/studies/pomegranates_from_the_scene.py" --height 300 --out out/pomegranates_painted.png
           python "$SK/studies/the_white_cup.py" --height 300 --out out/the_white_cup.png
+      - name: Watercolour (two studies on the second medium)
+        working-directory: ${{ runner.temp }}
+        run: |
+          SK="$GITHUB_WORKSPACE/skills/procedural-painting"
+          python "$SK/studies/estuary_in_watercolour.py" --height 400 --out out/estuary_wc.png
+          python "$SK/studies/poppies_in_watercolour.py" --height 400 --out out/poppies_wc.png
       - name: A moving painting (four frames of changing light, one set of strokes)
         working-directory: ${{ runner.temp }}
         run: |

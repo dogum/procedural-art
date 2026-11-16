@@ -75,6 +75,19 @@ Ararat from golden hour into night, along the real sun path for the date: 241 fr
 
 <img src="docs/media/pt_ararat_film_sheet.jpg" alt="Four frames of the film: afternoon, golden hour, dusk, night with the city lit" width="840">
 
+### A second medium: watercolour
+
+<table>
+<tr>
+<td width="62%"><img src="docs/media/wc_estuary.jpg" alt="Watercolour of an estuary: a wet blue sky with white clouds left as bare paper, violet hills, sparkling water, grasses on a sandy bank"><br><a href="skills/procedural-painting/studies/estuary_in_watercolour.py">Estuary</a></td>
+<td width="38%"><img src="docs/media/wc_poppies.jpg" alt="Watercolour of three red poppies with transparent overlapping petals against a soft green and blue ground"><br><a href="skills/procedural-painting/studies/poppies_in_watercolour.py">Poppies</a></td>
+</tr>
+</table>
+
+Watercolour is not oil paint made thin, so it has its own simulator (`aquarelle.py`). The white of the paper is the light and nothing covers it: the clouds and the sparkle on the water are sheet left bare. Layers are transparent, a wash on wet paper has no edge while the same wash on dry paper keeps one and dries darker at its rim, heavy pigments settle into the valleys of the paper, and a dry brush skips them. About a minute at 2133 × 1600.
+
+<img src="docs/media/wc_estuary_detail.jpg" alt="Detail at full size: ultramarine granulating in the paper grain on the hills, bare paper sparkle on the water" width="840">
+
 ### Set the subject up in 3D, then paint it
 
 <table>
@@ -282,7 +295,7 @@ One CPU core:
 
 ## Limits
 
-What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures from the 3D stage hold up to half length, with a plain face, mitten-like hands and a few folds; separate fingers, a gaze, real drapery and likenesses are still out of reach. The skills say so when a request lands there.
+What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures from the 3D stage hold up to half length, with a plain face, mitten-like hands and a few folds; separate fingers, a gaze, real drapery and likenesses are still out of reach. Watercolours get the paper, the transparency and the edges right, but their shapes are cleaner than a hand would make them and backruns are weak. The skills say so when a request lands there.
 
 ## Repository layout
 
