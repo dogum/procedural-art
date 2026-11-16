@@ -155,12 +155,12 @@ def main():
         print(f"ffmpeg not found: no film written; the {len(files)} painted frames ({W}x{H}) are in {work}")
         return
     cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-framerate', str(a.fps), '-i', os.path.join(work, '%05d.png'),
-           '-pix_fmt', 'yuv420p', '-crf', '17', '-movflags', '+faststart', a.out]
+           '-frames:v', str(len(files)), '-pix_fmt', 'yuv420p', '-crf', '17', '-movflags', '+faststart', a.out]
     subprocess.run(cmd, check=True)
     print(f"wrote {a.out}  {W}x{H}  {len(files)} frames")
     if a.gif:
         subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', str(a.fps), '-i', os.path.join(work, '%05d.png'),
-                        '-vf', f'fps={min(a.fps, 15)},scale={min(W, 720)}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160[p];'
+                        '-vf', f'trim=end_frame={len(files)},fps={min(a.fps, 15)},scale={min(W, 720)}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160[p];'
                                '[b][p]paletteuse=dither=bayer:bayer_scale=4', a.gif], check=True)
         print(f"wrote {a.gif}")
     if not a.stills:
