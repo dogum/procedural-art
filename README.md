@@ -86,6 +86,12 @@ Ararat from golden hour into night, along the real sun path for the date: 241 fr
 
 Watercolour is not oil paint made thin, so it has its own simulator (`aquarelle.py`). The white of the paper is the light and nothing covers it: the clouds and the sparkle on the water are sheet left bare. Layers are transparent, a wash on wet paper has no edge while the same wash on dry paper keeps one and dries darker at its rim, heavy pigments settle into the valleys of the paper, and a dry brush skips them. About a minute at 2133 × 1600.
 
+<img src="docs/media/wc_fuji.jpg" alt="Watercolour of Mount Fuji and its reflection in a lake, painted from the photographic render, with a margin of bare paper" width="840">
+
+`aquarelle_repaint.py` paints any picture as a watercolour, in a watercolourist's order: the lights are reserved as bare paper, the sky is dropped into wet paper, far planes are pale washes and each nearer one is darker with a hard top edge. With the terrain renderer's painter buffers (`--aov`) it knows snow from cloud and near from far. This is the Fuji render from the top of this page; about 45 seconds. Below, Ararat painted with the buffers.
+
+<img src="docs/media/wc_ararat.jpg" alt="Watercolour of Ararat and Little Ararat over a pale plain, the snow left as bare paper" width="840">
+
 <img src="docs/media/wc_estuary_detail.jpg" alt="Detail at full size: ultramarine granulating in the paper grain on the hills, bare paper sparkle on the water" width="840">
 
 ### Set the subject up in 3D, then paint it
@@ -295,7 +301,7 @@ One CPU core:
 
 ## Limits
 
-What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures from the 3D stage hold up to half length, with a plain face, mitten-like hands and a few folds; separate fingers, a gaze, real drapery and likenesses are still out of reach. Watercolours get the paper, the transparency and the edges right, but their shapes are cleaner than a hand would make them and backruns are weak. The skills say so when a request lands there.
+What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures from the 3D stage hold up to half length, with a plain face, mitten-like hands and a few folds; separate fingers, a gaze, real drapery and likenesses are still out of reach. Watercolours get the paper, the transparency and the edges right, but backruns are drawn more than simulated, they are soft at full size, and a mountain painted without the renderer's buffers is split into planes by tone alone. The skills say so when a request lands there.
 
 ## Repository layout
 

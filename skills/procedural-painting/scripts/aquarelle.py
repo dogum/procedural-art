@@ -88,6 +88,7 @@ class Paper:
     def __init__(self, width, height, seed=1, grain=1.0, paper='#f8f4ea', tilt=0.15, sim=None, film=False, log=True):
         self.W, self.H, self.seed = int(width), int(height), seed
         self.rng = np.random.default_rng(seed)
+        self._hrng = np.random.default_rng([seed, 91])        # the wobble of the hand: its own stream, so turning it off changes nothing else
         self._trng = np.random.default_rng([seed, 77])        # textures the size of a pixel; kept apart so the picture is the same at any size
         H, W = self.H, self.W
         yy, xx = np.mgrid[0:H, 0:W].astype(F32)
@@ -110,6 +111,7 @@ class Paper:
         self.d = np.zeros((self.hs, self.ws), F32)          # dampness in the sheet
         self.perm = np.exp(0.75 * self._noise(self.hs, self.ws, 0.016, 4, 0.65)).astype(F32)   # where water runs easily
         self.wet_paints = []
+        self._hand_f = None
         self._log, self._frames, self.n_ops = log, ([] if film else None), 0
 
     # ---- small helpers ---------------------------------------------------------------
@@ -117,12 +119,33 @@ class Paper:
         """Smooth noise over the sheet (zero mean, unit spread); `scale` in picture heights."""
         return self._noise(self.H, self.W, scale, octaves)
 
-    def _noise(self, h, w, scale, octaves=3, gain=0.5):
+    def _noise(self, h, w, scale, octaves=3, gain=0.5, rng=None, rh=384):
         # made on a fixed grid and enlarged, so the same seed gives the same picture at any size
-        rh = 384
         rw = max(2, int(round(rh * self.W / self.H)))
-        n = value_noise(rh, rw, scale * rh, self.rng, octaves, gain)
+        n = value_noise(rh, rw, scale * rh, rng or self.rng, octaves, gain)
         return _resize(n, w, h, Image.BICUBIC)
+
+    def _hand(self, m, hand):
+        """The edge of a shape as a loaded brush leaves it: it drifts off the drawn line, and bulges
+        in small scallops where the brush was set down again. Returns the mask and, along its
+        edge, how unevenly the brush was loaded (a field around 0)."""
+        H, W = self.H, self.W
+        if hand <= 0 or float(m.min()) > 0.5 or float(m.max()) < 0.5:
+            return m, 0.0
+        r = self._hrng
+        if self._hand_f is None:                # one hand for the whole sheet: washes that share an edge still meet along it
+            self._hand_f = ([self._noise(H, W, 0.16, 2, rng=r) for _ in range(2)], [self._noise(H, W, 0.035, 2, rng=r, rh=512) for _ in range(2)])
+        drift, lob = self._hand_f
+        amp = hand * H
+        dx = 0.0045 * amp * drift[0] + 0.0022 * amp * (np.abs(lob[0]) - 0.8)       # |noise|: rounded bulges meeting in cusps
+        dy = 0.0045 * amp * drift[1] + 0.0022 * amp * (np.abs(lob[1]) - 0.8)
+        # never move an edge further than a third of the shape's own thickness there
+        thick = ndi.distance_transform_edt(m > 0.5) + ndi.distance_transform_edt(m <= 0.5)
+        lim = np.clip(blur(np.minimum(ndi.maximum_filter(thick, int(0.02 * H) | 1), 0.05 * H).astype(F32), 0.006 * H) / (3 * 0.0067 * amp + 1e-6), 0, 1)
+        yy, xx = np.mgrid[0:H, 0:W].astype(F32)
+        out = ndi.map_coordinates(m, [yy + dy * lim, xx + dx * lim], order=1, mode='nearest').astype(F32)
+        band = np.clip(out * (1 - blur(out, 0.012 * H)) * 3.0, 0, 1)
+        return out, band * self._noise(H, W, 0.05, 2, rng=r) * 0.6 * hand
 
     def grade(self, angle=90.0, start=1.0, end=0.2, mask=None):
         """A strength that runs from `start` to `end` across the sheet (or across `mask`) in the
@@ -158,10 +181,11 @@ class Paper:
         return ks, (g if granulate is None else granulate), (s if staining is None else staining)
 
     # ---- putting water and paint down --------------------------------------------------
-    def wet(self, mask, amount=0.8, feather=0.012):
+    def wet(self, mask, amount=0.8, feather=0.012, hand=1.0):
         """Clean water on the paper: what is painted here next will have soft edges. `feather`
         (picture heights) is how far the damp spreads past the brushed edge."""
-        m = self._small(blur(np.clip(self._field(mask), 0, 1), feather * self.H))
+        m, _ = self._hand(np.clip(self._field(mask), 0, 1).astype(F32), hand)
+        m = self._small(blur(m, feather * self.H))
         self._rewet(m * amount)
         self.w = np.maximum(self.w, m * amount)
         self.d = np.maximum(self.d, np.clip(m * 1.5, 0, 1))
@@ -174,7 +198,8 @@ class Paper:
             p.a += p.s * k
             p.s *= 1 - k
 
-    def wash(self, mask, color, strength=1.0, wetness=0.75, vary=0.2, granulate=None, staining=None, settle=4, name=None):
+    def wash(self, mask, color, strength=1.0, wetness=0.75, vary=0.2, granulate=None, staining=None, settle=4, name=None,
+             hand=1.0):
         """Lay a wash: paint in water over `mask` (H x W, 0..1). On dry paper it keeps the edge of
         the mask and dries darker at the rim; where the paper is wet (p.wet, or an earlier wash
         that has not dried) it spreads and mixes.
@@ -186,15 +211,17 @@ class Paper:
                   longer to dry
         vary      unevenness of the loading (pigment pools here and there)
         settle    how long the water is left to move before the next touch (steps)
+        hand      how much the edge wanders off the mask, as a hand-held brush does: 0 keeps the
+                  mask exactly, 1 is a steady hand, 2 a loose one. Thin shapes are moved less.
         """
         H, W = self.H, self.W
-        m = np.clip(self._field(mask), 0, 1)
+        m, uneven = self._hand(np.clip(self._field(mask), 0, 1).astype(F32), hand)
         ks, g, stain = self._pigment(color, granulate, staining)
         # where the paper is dry the brush leaves a crisp edge that follows the tooth a little
         hard = smoothstep(-0.06, 0.06, m - 0.5 - 0.22 * self.grain * (self.tooth - 0.5) * (m < 0.98))
         damp = np.clip(self._big(np.clip(np.maximum(self.d, self.w * 2), 0, 1)), 0, 1)
         foot = hard * (1 - damp) + m * damp
-        load = np.asarray(strength, F32) * (1 + vary * self.noise(0.07, 3))
+        load = np.asarray(strength, F32) * (1 + vary * self.noise(0.07, 3) + uneven)
         ms = self._small(foot)
         water = ms * wetness
         self._rewet(water)
@@ -231,6 +258,7 @@ class Paper:
             m[sl] = np.maximum(m[sl], smoothstep(1.0, 0.75, dd))
         if within is not None:
             m = m * np.clip(self._field(within), 0, 1)
+        self._backrun(m, water, kw.pop('bloom', 1.0))
         if color is None:
             ms = self._small(m) * water
             self._rewet(ms)
@@ -238,7 +266,64 @@ class Paper:
             self.d = np.maximum(self.d, np.clip(ms * 1.5, 0, 1))
             self._step(kw.get('settle', 4))
         else:
+            kw.setdefault('hand', 0)
             self.wash(m, color, strength=strength, wetness=water, name=kw.pop('name', 'drop'), **kw)
+
+    def _backrun(self, m, water, bloom=1.0):
+        """A wetter touch in paint that has started to dry: the new water creeps out through the
+        damp wash and sweeps the pigment ahead of it. The middle is left pale; the pigment stops
+        where the water stops, in a dark fringe with a lobed, feathered outline. On paper that is
+        still running wet nothing of the kind happens (the touch just blends), and dry paper
+        does not carry the water at all."""
+        if bloom <= 0 or not self.wet_paints:
+            return
+        px = self.px
+        ms = self._small(m)
+        ready = smoothstep(0.03, 0.15, self.d) * (1 - smoothstep(0.32, 0.6, self.w))         # damp, no longer flooded
+        extra = np.clip(ms * water - self.w, 0, 1)
+        if float((extra * ready).max()) < 0.15:
+            return
+        # how far the water gets: further where the sheet lets it through, in lobes on lobes
+        r = self._hrng
+        lobes = 0.55 * np.abs(self._noise(self.hs, self.ws, 0.030, 2, rng=r, rh=512)) + 0.30 * np.abs(self._noise(self.hs, self.ws, 0.011, 2, rng=r, rh=768)) \
+            + 0.15 * np.abs(value_noise(self.hs, self.ws, 3.0 * px, self._trng))
+        reach = (9.0 + 26.0 * float(np.clip(water, 0, 1.5))) * px * bloom
+        src_ = (extra * ready > 0.15)
+        dist = ndi.distance_transform_edt(~src_).astype(F32)
+        R = (dist < reach * (0.35 + 1.1 * lobes) * self.perm.clip(0.6, 1.6)) & (ready > 0.2)
+        R = ndi.binary_fill_holes(ndi.binary_opening(R, iterations=1) | src_)
+        lab, _ = ndi.label(R)                                               # only water that is joined to the touch
+        R = np.isin(lab, np.unique(lab[src_])) & (lab > 0)
+        if R.sum() < 4:
+            return
+        ys, xs = np.where(R)
+        pad = 3
+        y0, y1, x0, x1 = max(0, ys.min() - pad), min(self.hs, ys.max() + pad + 1), max(0, xs.min() - pad), min(self.ws, xs.max() + pad + 1)
+        sl = (slice(y0, y1), slice(x0, x1))
+        Rb = R[sl]
+        inside = ndi.distance_transform_edt(Rb).astype(F32)                 # distance to the edge of the bloom
+        gy, gx = np.gradient(ndi.gaussian_filter(inside, 1.0))
+        nrm = np.maximum(np.hypot(gx, gy), 1e-4)
+        slow = 0.42 * (0.12 + 0.88 * smoothstep(0.0, 3.5, inside)) * Rb     # outwards, slowing into the edge, where it piles up
+        ux, uy = -slow * gx / nrm, -slow * gy / nrm
+        steps = int(min(200, float(inside.max()) / 0.42 * 1.1 + 10))
+        swept = smoothstep(0.0, 3.0 * px, inside) * ready[sl]
+        for p in self.wet_paints:
+            lifted = (p.a[sl] + p.s[sl]) * swept * float(np.clip(0.78 * (1 - 0.8 * p.stain) * bloom, 0, 0.92))
+            if float(lifted.max()) <= 1e-6:
+                continue
+            from_s = np.minimum(p.s[sl], lifted)
+            p.s[sl] -= from_s
+            p.a[sl] = np.maximum(p.a[sl] - (lifted - from_s), 0)
+            t = lifted.copy()
+            for _ in range(steps):
+                self._advect(t, ux, uy)
+            cap = 5.0 * float(np.percentile(lifted[lifted > 0], 90))         # a fringe, not beads: what piles too high spreads along it
+            over = np.maximum(t - cap, 0)
+            t = np.minimum(t, cap) + ndi.gaussian_filter(over, 2.5) * Rb
+            p.s[sl] += ndi.gaussian_filter(t, 0.6)                           # it dries where it was left: the fringe
+        self.w[sl] = np.maximum(self.w[sl], 0.30 * Rb)
+        self._frame()
 
     def stroke(self, lines, color, size=0.008, strength=1.0, dry=0.0, wetness=0.3, taper=0.6, granulate=None,
                staining=None, name=None):
@@ -286,7 +371,7 @@ class Paper:
             m[sl] = np.maximum(m[sl], cov)
         if dry <= 0:
             self.wash(m, color, strength=strength, wetness=wetness, vary=0.12, granulate=granulate, staining=staining,
-                      settle=2, name=name or 'strokes')
+                      settle=2, name=name or 'strokes', hand=0)
             return
         # dry brush: straight onto the paper, no water to move it
         ks, g, _ = self._pigment(color, granulate, staining)
@@ -344,6 +429,8 @@ class Paper:
             uy *= lim
             edge = 1 - ndi.gaussian_filter(m, 4.0 * px, mode='nearest')       # near a rim (or on its own): dries first
             mb = np.maximum(blur(m, 7.0 * px), 0.08)
+            flood = np.clip((w - 0.5) * 1.1, 0, 0.4) if float(w.max()) > 0.55 else None      # very wet paper: colour travels far
+            mb2 = np.maximum(blur(m, 20.0 * px), 0.08) if flood is not None else None
             sink = np.clip(1 - w / 0.5, 0, 1)
             for p in self.wet_paints:
                 if p.a.max() <= 1e-5:
@@ -352,6 +439,8 @@ class Paper:
                 # wet into wet: pigment wanders through deep water, and only through water
                 wide = m * blur(p.a, 7.0 * px) / mb
                 p.a += np.clip(w * w * 1.6, 0, 0.55) * self.perm.clip(0.6, 1.5) / 1.5 * (wide - p.a)
+                if flood is not None:
+                    p.a += flood * (m * blur(p.a, 20.0 * px) / mb2 - p.a)
                 # it settles as the film thins; heavy pigments first
                 s = np.clip((0.03 + 0.25 * sink * sink) * (1 + 0.8 * p.g), 0, 1) * p.a
                 s = np.where(w < 0.02, p.a, s)

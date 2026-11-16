@@ -94,6 +94,7 @@ jobs:
           SK="$GITHUB_WORKSPACE/skills/procedural-painting"
           python "$SK/studies/estuary_in_watercolour.py" --height 400 --out out/estuary_wc.png
           python "$SK/studies/poppies_in_watercolour.py" --height 400 --out out/poppies_wc.png
+          python "$SK/scripts/aquarelle_repaint.py" --in out/fuji_pbr.png --out out/fuji_wc.png --height 300
       - name: A moving painting (four frames of changing light, one set of strokes)
         working-directory: ${{ runner.temp }}
         run: |

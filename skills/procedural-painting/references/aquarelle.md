@@ -36,9 +36,9 @@ The same seed gives the same picture at any size.
 
 | Call | What it does |
 |---|---|
-| `p.wet(mask, amount=0.8, feather=0.012)` | clean water: what follows here has soft edges |
-| `p.wash(mask, color, strength=1.0, wetness=0.75, vary=0.2, granulate=None, staining=None, settle=4)` | a wash. `strength` and `mask` may be fields. More `wetness` spreads further on wet paper, takes longer to dry and leaves a stronger rim |
-| `p.drop(points, color, size=0.03, strength=1.0, water=1.0, ragged=0.35, within=None)` | touch a loaded brush in at each point (charging in). `color=None` is clean water, for a backrun. `within` keeps the touch inside a mask |
+| `p.wet(mask, amount=0.8, feather=0.012, hand=1.0)` | clean water: what follows here has soft edges |
+| `p.wash(mask, color, strength=1.0, wetness=0.75, vary=0.2, granulate=None, staining=None, settle=4, hand=1.0)` | a wash. `strength` and `mask` may be fields. More `wetness` spreads further on wet paper, takes longer to dry and leaves a stronger rim. `hand` is how far the edge wanders off the mask, as a hand-held brush does: 0 keeps the mask exactly, 1 is a steady hand, 2 a loose one |
+| `p.drop(points, color, size=0.03, strength=1.0, water=1.0, ragged=0.35, within=None, bloom=1.0)` | touch a loaded brush in at each point (charging in). `color=None` is clean water. In a wash that has started to dry (`p.settle(10)` to `(25)` first) the touch makes a backrun: a pale middle and a dark, lobed fringe where the water stopped. `bloom=0` turns that off; `within` keeps the touch inside a mask |
 | `p.stroke(lines, color, size=0.008, strength=1.0, dry=0.0, wetness=0.3, taper=0.6)` | brush strokes along lists of points. `dry=0` is a loaded brush (a small wash). `dry` 0.3 to 0.9 is dry brush: it catches the crowns of the paper, skips the valleys and gives out along the stroke |
 | `p.settle(steps=10)` | leave the water to move without drying the sheet |
 | `p.dry()` | dry the sheet: every wash settles where it is |
@@ -48,6 +48,21 @@ The same seed gives the same picture at any size.
 | `p.save(path)`, `p.render()`, `p.film(path, seconds=12)` | the result |
 
 `color` is a tube name from atelier's `PIGMENTS` (`'ultramarine'`), a hex colour, `mixture({'ultramarine': 2, 'burnt sienna': 1})` (mixed in the palette, by parts), or an H×W×3 study. Shapes come from atelier: `sd_circle`, `sd_ellipse`, `sd_box`, `sd_segment`, `sd_poly`, `sd_curve`, `curve`, `smin`, `fill`, `smoothstep`, `blur`.
+
+## The hand
+
+Masks are drawn with exact shapes; a brush does not follow them exactly. Every wash and every wetting is moved off its mask by one slow drift and a row of small scallops (where the brush was set down again), and the edge is loaded a little unevenly. The same displacement is used for the whole sheet, so two washes that share an edge still meet along it. Thin shapes are moved less than broad ones; strokes and drops are not moved at all. `hand=0` on a call keeps the mask exactly (use it for anything that must register with a drawn line).
+
+## A watercolour of an existing picture
+
+```bash
+python $S/aquarelle_repaint.py --in photo.png --out watercolour.png [--height 1200] [--seed 1] \
+       [--aov work/NAME/bands_WxH/aov] [--planes 4] [--key 1.0] [--border 0.035] [--accents 1.0] [--film f.mp4]
+```
+
+It works in a watercolourist's order: the lights are reserved as bare paper (snow, cloud tops, sparkle), the sky goes on wet paper in one wash, the land is a few flat washes laid from each skyline down so that nearer planes are the sum of the layers behind them, then one or two smaller washes for shadow shapes and darks, and a few dry-brush accents. Each wash is given exactly the absorption the picture still lacks there, so the layers add up to the picture's colour with no opaque paint.
+
+With `--aov` (the painter buffers of a `pbr_terrain.py --aov` render of the same view) the planes are the real ranges, split where the depth jumps, far ranges granulate, snow and cloud are reserved from the buffers and the accents run down the real fall lines. Without it the sky is the calm region hanging from the top edge and the planes are steps of tone. `--border 0` paints to the edge of the sheet; `--key 0` keeps the picture's own values. About 40 s at 2400×1000.
 
 ## Pigments
 
@@ -64,7 +79,8 @@ Granulating pigments settle into the paper's valleys and give a speckled wash: u
 ## Limits
 
 - The water moves on a grid about half the picture's size, so a rim is two or three pixels wide and soft at 1:1.
-- Backruns are small and round-edged; the feathered "cauliflower" fringe of a real bloom is only hinted at.
+- A backrun's outline is drawn from noise where the water would stop, not found by letting the water run; the fringe can pool into blobs in its hollows.
+- `aquarelle_repaint.py` simplifies hard: a few flat washes. Fine texture (trees, rock, ripples) is gone, shadow shapes are soft at 1:1, and without `--aov` a plane is only a step of tone, so it can cut across forms.
 - A brush stroke is one clean shape: no split hairs or side-loaded brush except in dry brush.
 - No salt, wax resist, masking-fluid edges or spatter physics (spatter is small drops).
 - Drawing is as hard as in `atelier`: the engine paints what the masks say.
