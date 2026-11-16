@@ -46,6 +46,7 @@ One pass of one brush size. Returns the number of strokes laid.
 | `size_var` | 0.25 | Spread of brush widths within the pass |
 | `bidir` | True | Strokes run either way along the flow. False makes every stroke go the same way (rain, grass leaning in wind) |
 | `knife` | None | True lays the pass with a palette knife: flat slabs with square ends, hard edges, a ridge along the sides and a lip where the blade lifts, hard bands of unmixed colour, and whole skipped patches where the blade rides over the tooth (more with `dry`). None follows the Painting's `knife` |
+| `fade` | False | For `p.replay` with another study: lay these strokes only as strongly as their spot is lit there |
 | `batches` | 3 | The pass is laid in this many successive sittings; each one picks up paint from the ones before |
 
 ### p.mass(mask, color, flow=0, sizes=(0.06, 0.03, 0.014), tol=0.06, **stroke parameters)
@@ -71,6 +72,10 @@ Smooth noise lying on the ground plane, so its features shrink toward the horizo
 ### p.checkpoint(path), Painting.resume(path), p.look(path, study=None)
 
 `checkpoint` saves the wet canvas (colour, relief, wetness, random state); `resume` returns a Painting exactly as it was. `look` writes the sheet `sitting.py` shows: the lit canvas, and with a study the study beside it, both small in grey, and a heat map of where they differ. `sitting.py` uses all three; call them yourself only if you drive the loop by hand.
+
+### p.replay(tape, study=None)
+
+Lays a recorded tape again on a canvas of the same size. With `study`, every stroke that took its colour from a study takes it from this one, at the spot where the stroke started and with the same personal variation it had (its difference from the study it was painted from, scaled by how much lighter or darker the spot is now). Path, width, order, bristle texture and the canvas weave are unchanged, so two replays of one tape under two studies are the same brushwork under two lights; this is how `motion.py` paints a film. Record with `Painting(..., tape='full')` so cut edges replay exactly. Passes laid with `fade=True` are replayed only as strongly as their spot is lit in the new study (opacity and thickness fall to nothing as the spot goes dark): use it for lamps, stars and highlights that should not leave thick dabs behind when they are off.
 
 ### p.glaze(mask, color, strength=0.3), p.dry(amount=1.0)
 

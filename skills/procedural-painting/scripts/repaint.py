@@ -145,28 +145,24 @@ def paint_terrain(p, src, A, k, arcs, L, film_note=None):
     return land
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--in', dest='src', required=True)
-    ap.add_argument('--out', required=True)
-    ap.add_argument('--height', type=int, default=None, help='output height in pixels (default: the input height)')
-    ap.add_argument('--looseness', type=float, default=1.0, help='above 1: bigger brushes, fewer small strokes')
-    ap.add_argument('--ground', default='#7a5a40', help='colour of the toned canvas (hex or pigment name)')
-    ap.add_argument('--film', default=None)
-    ap.add_argument('--seed', type=int, default=1)
-    ap.add_argument('--geom', default=None, help='geometry cache folder of a pbr_terrain.py --geom-cache render')
-    ap.add_argument('--aov', default=None, help='painter buffers folder of a pbr_terrain.py --aov render (<bands>/aov)')
-    ap.add_argument('--push', type=float, default=None, help="painter's-eye colour push (default 1 with --geom or --aov, else 0)")
-    a = ap.parse_args()
+def painters_eye(src, push=1.0):
+    """More chroma, warmer lights, cooler shadows: how a painter would key the picture."""
+    if push <= 0:
+        return src
+    L = src @ np.array([0.299, 0.587, 0.114], F32)
+    g = L[..., None]
+    src = np.clip(g + (src - g) * (1 + 0.3 * push), 0, 1)                         # chroma
+    warm = smoothstep(0.45, 0.85, L)[..., None] * push
+    cool = smoothstep(0.5, 0.15, L)[..., None] * push
+    src = src * (1 + warm * np.array([0.06, 0.02, -0.07], F32)) + cool * np.array([-0.025, -0.005, 0.05], F32)
+    src = np.clip(0.5 + (src - 0.5) * (1 + 0.1 * push), 0, 1).astype(F32)
 
-    from PIL import Image
-    im = Image.open(a.src)
-    H = a.height or im.height
-    W = int(round(H * im.width / im.height))
-    src = load_image(a.src, W, H)
-    p = Painting(W, H, seed=a.seed, ground=a.ground, film=bool(a.film))
-    k = a.looseness
+    return src
 
+
+def paint_picture(p, src, k=1.0, aov=None, geom=None, push=0.0):
+    """Paint the image `src` (H x W x 3) on the canvas p. aov / geom: folders of terrain buffers."""
+    H, W = p.H, p.W
     # direction: along edges where the picture has structure, long arcs where it is empty
     L = src @ np.array([0.299, 0.587, 0.114], F32)
     gy, gx = np.gradient(blur(L, 0.004 * H))
@@ -177,24 +173,17 @@ def main():
     d = np.where(np.cos(ef) < 0, ef + np.pi, ef)                      # keep directions in one half-plane
     flow = np.arctan2(has * np.sin(d) + (1 - has) * np.sin(arcs), has * np.cos(d) + (1 - has) * np.cos(arcs))
 
-    push = a.push if a.push is not None else (1.0 if (a.geom or a.aov) else 0.0)
-    if push > 0:
-        g = L[..., None]
-        src = np.clip(g + (src - g) * (1 + 0.3 * push), 0, 1)                         # chroma
-        warm = smoothstep(0.45, 0.85, L)[..., None] * push
-        cool = smoothstep(0.5, 0.15, L)[..., None] * push
-        src = src * (1 + warm * np.array([0.06, 0.02, -0.07], F32)) + cool * np.array([-0.025, -0.005, 0.05], F32)
-        src = np.clip(0.5 + (src - 0.5) * (1 + 0.1 * push), 0, 1).astype(F32)
+    src = painters_eye(src, push)
 
     one = np.ones((H, W), F32)
     p.strokes(one, blur(src, 0.02 * H), flow=flow, size=0.08 * k, length=4, load=0.8, opacity=0.9, pickup=0.0,
               dry=0.35, thickness=0.35, jitter=0.06, name='lay-in')
-    if a.aov:
-        land = paint_terrain(p, src, load_aov(a.aov, W, H), k, arcs, L)
-    elif a.geom:
-        files = sorted(glob.glob(os.path.join(a.geom, '*.npz')))
+    if aov:
+        land = paint_terrain(p, src, load_aov(aov, W, H), k, arcs, L)
+    elif geom:
+        files = sorted(glob.glob(os.path.join(geom, '*.npz')))
         if not files:
-            raise SystemExit(f"no geometry bands in {a.geom}")
+            raise SystemExit(f"no geometry bands in {geom}")
         t = np.concatenate([np.load(f)['t'] for f in files])
         hit = np.concatenate([np.load(f)['hit'] for f in files])
         h0 = int(os.path.basename(files[-1])[:-4].split('_')[1])
@@ -230,10 +219,34 @@ def main():
     # lights last: thick, clean, only where the picture is brighter than its surroundings
     lum = blur(L, 0.002 * H)
     hi = smoothstep(0.06, 0.16, lum - blur(lum, 0.03 * H)) * smoothstep(0.55, 0.8, lum)
-    if a.geom or a.aov:
+    if geom or aov:
         hi = hi * smoothstep(0.5, 0.9, blur(land, 0.004 * H))                 # not along the skyline
     p.strokes(hi, src, flow=flow, size=0.007 * k, length=2.5, pickup=0.1, load=1.3, thickness=2.4, jitter=0.02,
-              ctol=0.12, overshoot=0.0, name='lights')
+              ctol=0.12, overshoot=0.0, fade=True, name='lights')
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--in', dest='src', required=True)
+    ap.add_argument('--out', required=True)
+    ap.add_argument('--height', type=int, default=None, help='output height in pixels (default: the input height)')
+    ap.add_argument('--looseness', type=float, default=1.0, help='above 1: bigger brushes, fewer small strokes')
+    ap.add_argument('--ground', default='#7a5a40', help='colour of the toned canvas (hex or pigment name)')
+    ap.add_argument('--film', default=None)
+    ap.add_argument('--seed', type=int, default=1)
+    ap.add_argument('--geom', default=None, help='geometry cache folder of a pbr_terrain.py --geom-cache render')
+    ap.add_argument('--aov', default=None, help='painter buffers folder of a pbr_terrain.py --aov render (<bands>/aov)')
+    ap.add_argument('--push', type=float, default=None, help="painter's-eye colour push (default 1 with --geom or --aov, else 0)")
+    a = ap.parse_args()
+
+    from PIL import Image
+    im = Image.open(a.src)
+    H = a.height or im.height
+    W = int(round(H * im.width / im.height))
+    src = load_image(a.src, W, H)
+    p = Painting(W, H, seed=a.seed, ground=a.ground, film=bool(a.film))
+    push = a.push if a.push is not None else (1.0 if (a.geom or a.aov) else 0.0)
+    paint_picture(p, src, a.looseness, a.aov, a.geom, push)
     p.save(a.out)
     if a.film:
         p.film(a.film)

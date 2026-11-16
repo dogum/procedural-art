@@ -15,6 +15,7 @@ You are the painter. `scripts/atelier.py` is the paint, the brushes and the canv
 |---|---|---|
 | `scripts/sitting.py` + `scripts/atelier.py` | An original painting of any subject, painted in sittings with a look at the canvas between them | 10 to 20 s per look at 1200×800 · 1 to 3 min for a 2400×1600 final |
 | `scripts/repaint.py` | Repaints an existing image with the same paint; with `--aov` it paints a real mountain by its ground (fall lines, snow, water) | 15 s at 1800×600 |
+| `scripts/motion.py` | A painting that moves: a fixed-camera film (a sunset timelapse) painted with one set of strokes that hold still while the light changes | about 2.5 s per frame at 1200×400, frames in parallel |
 | `scripts/tape.py` | Exports the stroke list so the painting can paint itself live in a browser (`docs/paint`) | under 1 s |
 
 Requirements: Python 3 with numpy, scipy and pillow; ffmpeg for the process film. Work in a writable folder and call scripts by path. In the commands below `SK` is this skill's folder and `S=$SK/scripts`.
@@ -102,6 +103,18 @@ python $R/pbr_terrain.py --peak 39.7019,44.2986 --from 40.1792,44.4991 --work wo
 python $R/post_terrain.py --bands work/ararat/bands_2400x1000 --out ararat.png
 python $S/repaint.py --in ararat.png --aov work/ararat/bands_2400x1000/aov --out ararat_oil.png --height 1000
 ```
+
+## A painting that moves
+
+```bash
+python $S/motion.py --frames work/tl/frames_HASH --aov work/tl/bands_1200x400_aov/aov --out sunset_oil.mp4 --keys 9
+```
+
+`--frames` is a folder of frames from a fixed camera: a `procedural-realism` timelapse (`timelapse.py` leaves them in `<work>/frames_<hash>`), or any numbered image sequence. Painting each frame separately would make the brushwork boil, so the film is painted as one canvas: the first frame is painted in full and every stroke is remembered; at `--keys` frames spread over the film the same strokes are laid again in that frame's colours and the painter adds only what they cannot show there (a shadow edge that moved, lamps that came on, stars); then every frame is the whole set of strokes laid again, in the same order on the same weave, in that frame's colours. Lights are laid only while their spot is lit. `--aov` (buffers of the same view from `pbr_terrain.py --aov`, at the frame size) makes the first frame a terrain-aware painting. More `--keys` follow fast changes better and cost a few seconds each.
+
+For the buffers of a timelapse view, render one more frame with the same view flags as after the `--` of the timelapse command, plus `--sky physical --geom-cache --size WxH --tag aov --aov`, into the same `--work`.
+
+In your own script the pieces are `Painting(..., tape='full')`, `p.replay(tape, study)` (the same strokes with colours taken from another study) and `fade=True` on passes that paint lights.
 
 ## Watching it paint in a browser
 
