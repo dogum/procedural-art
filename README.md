@@ -80,7 +80,7 @@ Ararat from golden hour into night, along the real sun path for the date: 241 fr
 <table>
 <tr>
 <td width="50%"><img src="docs/media/pt_letter.jpg" alt="Oil painting of a woman reading in a chair by a tall window, sunlight falling across a wooden floor, a table with a blue jug"><br><a href="skills/procedural-painting/studies/the_letter.py">The letter</a></td>
-<td width="50%"><img src="docs/media/pt_letter_detail.jpg" alt="Detail of the seated figure at full size"><br>The figure at 1:1: a posed mannequin of 3D solids, painted</td>
+<td width="50%"><img src="docs/media/pt_white_cup.jpg" alt="Oil painting of a woman in an ochre sweater at a table, lifting a white cup, two pears and a plate in front of her"><br><a href="skills/procedural-painting/studies/the_white_cup.py">The white cup</a>: the figure at half length, with a face, hands and folded cloth</td>
 </tr>
 </table>
 
@@ -282,7 +282,7 @@ One CPU core:
 
 ## Limits
 
-What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures from the 3D stage read as people at mid distance, while faces, hands, cloth folds and likenesses are still out of reach. The skills say so when a request lands there.
+What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures from the 3D stage hold up to half length, with a plain face, mitten-like hands and a few folds; separate fingers, a gaze, real drapery and likenesses are still out of reach. The skills say so when a request lands there.
 
 ## Repository layout
 

@@ -87,6 +87,7 @@ jobs:
           SK="$GITHUB_WORKSPACE/skills/procedural-painting"
           python "$SK/studies/the_letter.py" --height 300 --out out/the_letter.png
           python "$SK/studies/pomegranates_from_the_scene.py" --height 300 --out out/pomegranates_painted.png
+          python "$SK/studies/the_white_cup.py" --height 300 --out out/the_white_cup.png
       - name: A moving painting (four frames of changing light, one set of strokes)
         working-directory: ${{ runner.temp }}
         run: |

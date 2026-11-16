@@ -21,7 +21,7 @@ You are the painter. `scripts/atelier.py` is the paint, the brushes and the canv
 
 Requirements: Python 3 with numpy, scipy and pillow; ffmpeg for the process film. Work in a writable folder and call scripts by path. In the commands below `SK` is this skill's folder and `S=$SK/scripts`.
 
-Six finished paintings live in `studies/`. Read one before writing your own: `the_letter.py` (3D stage: an interior, a seated figure, window light), `pomegranates_from_the_scene.py` (the path tracer's scene file, painted), `harbour_at_first_light.py` (painted in sittings; limited palette, boats, water, drawn rigging), `rain_at_blue_hour.py` (night street, lamps, reflections, figures), `lemons_and_blue_jug.py` (still life, form and cast shadows), `wind_over_the_barley.py` (daylight landscape, clouds). Each runs as `python $SK/studies/NAME.py --out out.png [--height 1600] [--film out.mp4] [--study study.png] [--tape out.tape]`.
+Seven finished paintings live in `studies/`. Read one before writing your own: `the_letter.py` (3D stage: an interior, a seated figure, window light), `the_white_cup.py` (3D stage: a half-length figure at a table, face and hands), `pomegranates_from_the_scene.py` (the path tracer's scene file, painted), `harbour_at_first_light.py` (painted in sittings; limited palette, boats, water, drawn rigging), `rain_at_blue_hour.py` (night street, lamps, reflections, figures), `lemons_and_blue_jug.py` (still life, form and cast shadows), `wind_over_the_barley.py` (daylight landscape, clouds). Each runs as `python $SK/studies/NAME.py --out out.png [--height 1600] [--film out.mp4] [--study study.png] [--tape out.tape]`.
 
 ## How a painting is made
 
