@@ -542,7 +542,8 @@ class Scene:
         for j, t in enumerate(order):
             m = (idim == j)
             if m.any():
-                B.masks[t.name] = np.clip(up_(m.astype(F32), Image.BILINEAR), 0, 1)
+                m = np.clip(up_(m.astype(F32), Image.BILINEAR), 0, 1)
+                B.masks[t.name] = np.maximum(B.masks[t.name], m) if t.name in B.masks else m     # two objects, one name: one mask
         B.masks['backdrop'] = np.clip(up_((idim < 0).astype(F32), Image.BILINEAR), 0, 1)
         if B.masks['backdrop'].max() < 0.5:
             del B.masks['backdrop']

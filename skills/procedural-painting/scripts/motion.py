@@ -71,7 +71,8 @@ def render_frame(i):
     if not (G['reuse'] and os.path.exists(out)):
         p = Painting(G['W'], G['H'], seed=G['seed'], ground=G['ground'], log=False)
         p.replay(G['tape'], study_at(i))
-        p.save(out)
+        p.save(out + '.part.png')                             # a frame exists only once it is whole
+        os.replace(out + '.part.png', out)
     return i
 
 
@@ -113,6 +114,10 @@ def main():
     key = hashlib.sha1(repr((sig, W, H, a.keys, a.looseness, a.push, a.ground, a.seed, a.aov)).encode()).hexdigest()
     stamp = os.path.join(work, 'motion.key')
     reuse = os.path.exists(stamp) and open(stamp).read().strip() == key
+    if not reuse:                                            # frames of another film: gone before the new key is written
+        for f in [stamp] + [os.path.join(work, f'{i:05d}.png') for i in range(len(files))]:
+            if os.path.exists(f):
+                os.remove(f)
     with open(stamp, 'w') as f:
         f.write(key)
     G.update(files=files, W=W, H=H, push=a.push if a.push is not None else (1.0 if a.aov else 0.0),

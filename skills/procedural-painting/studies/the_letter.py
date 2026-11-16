@@ -70,7 +70,7 @@ sc.add('chair', [box((FX - 0.16, SEAT - 0.02, FZ), (0.23, 0.02, 0.22)), box((FX 
 j = figure(sc, 'reader', at=(FX, 0, FZ), facing=-90, height=1.66, pose='read', seat=SEAT, skirt=True,
            top='#d9d3c5', bottom='#23252f', skin='#d2a184', hair='#33241c', shoes='#17130f', head_pitch=34, lean=10)
 mid = 0.5 * (j['hand_l'] + j['hand_r'])
-sc.add('reader.hair', ellipsoid(j['head'] + (0.085, 0.025, 0.0), (0.045, 0.042, 0.045)), '#33241c', importance=1.4)       # a knot of hair
+sc.add('reader.hair.knot', ellipsoid(j['head'] + (0.085, 0.025, 0.0), (0.045, 0.042, 0.045)), '#33241c', importance=1.4)       # a knot of hair
 sc.add('reader.letter', box(mid + (-0.03, 0.03, 0.0), (0.012, 0.105, 0.075), rot=(0, 0, 34)), '#f3ecd9', importance=2.0)
 
 B = sc.render(p)
