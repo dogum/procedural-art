@@ -250,7 +250,7 @@
       for (let i = 0; i < n; i++) this._lin(i);
       this.opI = 0; this.sitI = 0; this.sitLeft = -1; this.strokeI = 0; this.done = 0; this.serial = 0;
       this.owner.fill(-1); this.stale.fill(1); this.dirty.fill(1);
-      this.finished = false;
+      this.finished = false; this._mine = null;             // a hand's last stroke cannot be taken off a new canvas
       if (tape.strokes === 0) this._drain();
     }
 
@@ -313,6 +313,7 @@
     /** Every stroke of a sitting sees the canvas as it was when the sitting began. */
     _snapshot() {
       const { W, H, tw, th, stale } = this;
+      this._mine = null;                                    // the painter carries on: the hand's stroke is part of the canvas now
       for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
         if (!stale[ty * tw + tx]) continue;
         stale[ty * tw + tx] = 0;
@@ -399,6 +400,7 @@
         }
       }
       if (n === 0) return;
+      this._box = [bx0, by0, bx1, by1];
       this._touch(bx0, by0, bx1, by1, this._pad);
 
       // the paint: what each of those pixels gets
@@ -472,8 +474,11 @@
           // wet-into-wet: the bristle has been dragging through the paint behind it
           let wc = 0;
           for (let k = 0; k < NB; k++) qc[k] = 0;
-          for (let lb = 0; lb < 3; lb++) {
-            const back = lb === 0 ? 0.10 : lb === 1 ? 0.28 : 0.6, wt = lb === 0 ? 0.45 : lb === 1 ? 0.35 : 0.20;
+          const taps = P.drag ? 8 : 3;                                    // a hand's stroke looks back in brush widths, smoothly
+          for (let lb = 0; lb < taps; lb++) {
+            let back, wt;
+            if (P.drag) { const f = (lb + 0.5) / taps; back = f * f * P.drag * w / L; wt = (1 - 0.8 * f) / (taps * 0.6); }
+            else { back = lb === 0 ? 0.10 : lb === 1 ? 0.28 : 0.6; wt = lb === 0 ? 0.45 : lb === 1 ? 0.35 : 0.20; }
             const ub = uu - back * L - 1.0;
             path(ub > 0 ? ub : 0);
             let bx = Math.round(ax + vv * w * nx), by = Math.round(ay + vv * w * ny);
@@ -508,6 +513,67 @@
         this._lin(id);
       }
     }
+
+    // ---- a brush in the visitor's hand ------------------------------------------------
+    /** Call when the brush touches the canvas: the stroke that follows sees the canvas as it is now. */
+    beginStroke() {
+      this.sq.set(this.q); this.sh.set(this.h); this.swet.set(this.wet);
+      this.stale.fill(0); this._box = null; this._mine = null;
+    }
+    _restore(box) {
+      const { W, q, sq, h, sh, wet, swet } = this, [x0, y0, x1, y1] = box;
+      for (let y = y0; y <= y1; y++) {
+        const a = y * W + x0, b = y * W + x1 + 1;
+        q.set(sq.subarray(a * NB, b * NB), a * NB); h.set(sh.subarray(a, b), a); wet.set(swet.subarray(a, b), a);
+        for (let i = a; i < b; i++) this._lin(i);
+      }
+      this._touch(x0, y0, x1, y1, this._pad);
+    }
+    /** Lay (or lay again, longer) the stroke being drawn. pts: [[x, y], ...] in canvas pixels;
+        opt: { rgb: [r, g, b] 0..255, size: brush width in pixels, knife: bool, offs: four numbers 0..1 }. */
+    userStroke(pts, opt) {
+      if (this._mine) { this._restore(this._mine); this._mine = null; }
+      const H = this.H, w = Math.max(2, opt.size), step = Math.max(1, 0.35 * w);
+      // walk the pointer's path in equal steps
+      const X = [pts[0][0]], Y = [pts[0][1]];
+      let px = pts[0][0], py = pts[0][1], need = step;
+      for (let i = 1; i < pts.length; i++) {
+        let dx = pts[i][0] - px, dy = pts[i][1] - py, d = Math.hypot(dx, dy);
+        while (d >= need) { px += dx / d * need; py += dy / d * need; X.push(px); Y.push(py); dx = pts[i][0] - px; dy = pts[i][1] - py; d = Math.hypot(dx, dy); need = step; }
+        need -= d; px = pts[i][0]; py = pts[i][1];
+      }
+      if (X.length < 2) { X.push(X[0] + step); Y.push(Y[0]); }             // a touch: one dab
+      X.push(2 * X[X.length - 1] - X[X.length - 2]); Y.push(2 * Y[Y.length - 1] - Y[Y.length - 2]);
+      const K = Math.min(X.length, 4000), L = Math.max(w * 0.6, (K - 2) * step);
+      const delta = new Int8Array(2 * (K - 1));
+      let cx = Math.round(X[0] / H * 8192) / 8192 * H, cy = Math.round(Y[0] / H * 8192) / 8192 * H;
+      const x0 = Math.round(X[0] / H * 8192), y0 = Math.round(Y[0] / H * 8192);
+      for (let k = 1; k < K; k++) {
+        const ddx = Math.max(-127, Math.min(127, Math.round((X[k] - cx) / step * 100))), ddy = Math.max(-127, Math.min(127, Math.round((Y[k] - cy) / step * 100)));
+        delta[2 * k - 2] = ddx; delta[2 * k - 1] = ddy; cx += ddx * step / 100; cy += ddy * step / 100;
+      }
+      const c = opt.rgb, v = (x, d) => Math.max(0, Math.min(255, Math.round(x + d)));
+      const o = opt.offs || [0.1, 0.3, 0.5, 0.7];
+      const op = {
+        step: step / H, mask: null,
+        params: { shape: opt.knife ? 'knife' : 'brush', knife: !!opt.knife, taper: 0.3, load: opt.knife ? 1.5 : 1.25, opacity: 1, pickup: opt.knife ? 0.3 : 0.65,
+                  dry: 0.05, marble: 0.35, clip: 0, soft: 0.08, thickness: opt.knife ? 2.6 : 1.7, drag: 4 },
+        x0: new Int16Array([x0]), y0: new Int16Array([y0]),
+        width: new Uint16Array([Math.min(65535, Math.round(w / H * 262144))]), length: new Uint16Array([Math.min(65535, Math.round(L / H * 16384))]),
+        count: new Uint16Array([K]), start: new Uint32Array([0]), delta,
+        c1: new Uint8Array(c), c2: new Uint8Array([v(c[0], 14), v(c[1], 10), v(c[2], 4)]),
+        runout: new Uint8Array([Math.round(255 * Math.min(0.85, L / (w * 28)))]),      // a long pull runs the brush dry
+        offs: new Uint8Array(o.map((t) => Math.floor(t * 256) & 255)),
+      };
+      this._box = null;
+      const study = this.study; this.study = null;
+      this._stroke(op, 0);
+      this.study = study;
+      this._mine = this._box;
+    }
+    /** Take the last stroke of the hand off again. */
+    undoStroke() { if (this._mine) { this._restore(this._mine); this._mine = null; } }
+    get canUndo() { return !!this._mine; }
 
     get _pad() { return Math.ceil(this._occR) + 3; }
     get _occR() { return Math.max(2, Math.round(3.0 * this.px * 1.6)); }    // box radius matching a 3 px blur
@@ -605,5 +671,10 @@
   }
   Painting._q1 = new Float32Array(NB); Painting._q2 = new Float32Array(NB); Painting._qc = new Float32Array(NB); Painting._now = new Float32Array(3);
 
-  global.Atelier = { Painting, loadTape, parseTape, loadLight };
+  /** A toned canvas with nothing on it yet. */
+  function blankTape(aspect, ground, title) {
+    return { version: 1, title: title || '', aspect, height: 1000, ground, weave: 1, strokes: 0, ops: [], clock: new Float64Array(1) };
+  }
+
+  global.Atelier = { Painting, loadTape, parseTape, loadLight, blankTape };
 })(typeof self !== 'undefined' ? self : this);

@@ -16,6 +16,7 @@ You are the painter. `scripts/atelier.py` is the paint, the brushes and the canv
 | `scripts/sitting.py` + `scripts/atelier.py` | An original painting of any subject, painted in sittings with a look at the canvas between them | 10 to 20 s per look at 1200×800 · 1 to 3 min for a 2400×1600 final |
 | `scripts/stage.py` | Sets the subject up as a small 3D scene (solids, posable figures, camera, light) and hands the painter a colour study, masks, depth and form-following brush directions | 10 to 16 s per render |
 | `scripts/repaint.py` | Repaints an existing image with the same paint; with `--aov` it paints a real mountain by its ground (fall lines, snow, water) | 15 s at 1800×600 |
+| `scripts/aquarelle.py` | Watercolour, a second medium with its own simulation: transparent washes over white paper, wet-in-wet, hard edges that dry darker at the rim, granulation in the paper grain, dry brush (see `references/aquarelle.md`) | about 1 min at 2133×1600 |
 | `scripts/motion.py` | A painting that moves: a fixed-camera film (a sunset timelapse) painted with one set of strokes that hold still while the light changes | about 2.5 s per frame at 1200×400, frames in parallel |
 | `scripts/tape.py` | Exports the stroke list so the painting can paint itself live in a browser (`docs/paint`) | under 1 s |
 
@@ -120,6 +121,10 @@ For the buffers of a timelapse view, render one more frame with the same view fl
 
 In your own script the pieces are `Painting(..., tape='full')`, `p.replay(tape, study)` (the same strokes with colours taken from another study) and `fade=True` on passes that paint lights.
 
+## Watercolour
+
+When the user asks for watercolour, use `scripts/aquarelle.py` instead of the oil engine: `from aquarelle import *`, `p = Paper(W, H, seed=1)`. The order is the medium's own: light to dark, whites are paper left bare, a wash on wet paper has no edge and a wash on dry paper keeps one. `p.wet(mask)`, `p.wash(mask, color, strength)`, `p.drop(points, color)` (charge colour or clean water into a wet wash), `p.stroke(lines, color, size, dry=...)`, `p.dry()` between layers, `p.save(out)`. Read `references/aquarelle.md` and one of `studies/estuary_in_watercolour.py` (wet sky, granulating hills, dry-brush water) or `studies/poppies_in_watercolour.py` (transparent petal layers) first. Its limits: backruns are weak, shapes come out cleaner than a hand would make them, and it is soft at 1:1.
+
 ## Watching it paint in a browser
 
 Every study takes `--tape FILE` (and `sitting.py --final ... --tape FILE`): the stroke list in a 0.7 to 2 MB file. The page in `docs/paint` holds a JavaScript port of the simulator and lays the strokes again live, at any size, with a movable light. It is not a video. To add a painting there, export to `docs/paint/tapes/NAME.tape` and add `{ id: 'NAME', title: '...' }` to `PAINTINGS` in `docs/paint/app.js`. In your own script: `Painting(..., tape=True)`, then `from tape import save_tape; save_tape(p, 'x.tape', title='...')`.
@@ -128,7 +133,7 @@ Every study takes `--tape FILE` (and `sitting.py --final ... --tape FILE`): the 
 
 Say so when a request lands here.
 
-- Likeness and anatomy. Figures from the 3D stage read as people at mid distance (pose, proportion, cast shadow); faces, hands, cloth folds and portraits of specific people are still out of reach.
+- Likeness and anatomy. Figures from the 3D stage hold up to half length (pose, proportion, a plain face, mitten-like hands, a few folds); separate fingers, a gaze, real drapery and portraits of specific people are still out of reach.
 - The picture is only as good as the study. The engine will paint a badly drawn study beautifully and it will still be badly drawn. Spend the iterations there.
 - Fine lettering, architecture with exact perspective and anything that needs ruler precision fight the medium.
-- It is oil paint. For watercolour, gouache or ink finishes of an existing image use `paint.py` in `procedural-realism`.
+- Two media: oil (`atelier.py`) and watercolour (`aquarelle.py`). For gouache or ink finishes of an existing image use `paint.py` in `procedural-realism`.

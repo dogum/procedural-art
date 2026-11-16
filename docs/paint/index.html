@@ -48,6 +48,14 @@
         <button id="evening" type="button">Let the evening pass</button>
         <p>A moving painting: one set of strokes, laid again in the light of each moment. Pick an hour and the same brushwork is repainted in its colours; the lamps are laid only once they are lit.</p>
       </div>
+      <div class="turn">
+        <span class="pno2">Your turn</span>
+        <div class="tubes" id="tubes" role="group" aria-label="Tube colour"></div>
+        <label>Brush <input id="brush" type="range" min="6" max="90" value="26" aria-label="Brush width"></label>
+        <label><input type="checkbox" id="knife"> Palette knife</label>
+        <button id="undo" type="button" disabled>Take that stroke off</button>
+        <p>Drag on the canvas. It is the same paint: your colour mixes as pigment with whatever wet paint it crosses, a long pull runs the brush dry, and thick paint catches the light.</p>
+      </div>
       <div class="lightrow">
         <div class="dial" id="dial" tabindex="0" role="slider" aria-label="Light direction (arrow keys)" aria-valuetext="upper left"><span class="knob" id="knob"></span></div>
         <div>

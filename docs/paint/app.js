@@ -7,6 +7,7 @@
     { id: 'wind_over_the_barley', title: 'Wind over the barley' },
     { id: 'lemons_and_blue_jug', title: 'Lemons and a blue jug' },
     { id: 'ararat_dusk_into_night', title: 'Ararat, dusk into night' },
+    { id: 'blank', title: 'A blank canvas' },
   ];
   const SECONDS = 50;                                   // one painting at 1x
   const $ = (id) => document.getElementById(id);
@@ -39,7 +40,7 @@
     $('title').textContent = it.title;
     say('Fetching the strokes…');
     try {
-      const tape = tapes[id] || (tapes[id] = await Atelier.loadTape('tapes/' + id + '.tape'));
+      const tape = tapes[id] || (tapes[id] = id === 'blank' ? Atelier.blankTape(1.5, [0.48, 0.36, 0.26], it.title) : await Atelier.loadTape('tapes/' + id + '.tape'));
       if (mine !== token) return;
       say('Stretching the canvas…');
       await new Promise((r) => setTimeout(r, 30));      // let the message show before the heavy part
@@ -53,7 +54,9 @@
       p.light = [lightX, lightY]; p.relief = $('relief').checked ? 1 : 0;
       canvas.width = p.W; canvas.height = p.H;
       p.paint(ctx, true);
-      P = p; vt = 0; seekTo = null; spent = 0; t0 = performance.now();
+      P = p; vt = 0; seekTo = null; spent = 0; t0 = performance.now(); mine_n = 0; $('undo').disabled = true;
+      playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      $('seek').disabled = $('play').disabled = $('restart').disabled = id === 'blank';
       $('facts').innerHTML = '<b>' + tape.strokes.toLocaleString('en') + '</b> strokes · ' + p.W + ' × ' + p.H + '<br>12 bands of pigment per pixel<br>bristles, dry brush, wet-into-wet<br>no image model, no libraries';
       say('');
       history.replaceState(null, '', '#' + id);
@@ -80,20 +83,24 @@
       }
       if (relight && !film) { P.paint(ctx, 'light'); relight = false; }
       if (P.finished) fast = false;
+      if (!path && !P.canUndo) $('undo').disabled = true;       // playback moved on, or the canvas started over
       spent += performance.now() - a;
       const tape = P.tape;
       if (film) $('count').innerHTML = film.frames.length < film.n
         ? 'painting the light of moment <b>' + (film.frames.length + 1) + '</b> of ' + film.n + ', every stroke again'
         : 'the same <b>' + tape.strokes.toLocaleString('en') + '</b> strokes, ' + film.n + ' moments of light';
+      else if (mine_n) $('count').innerHTML = '<b>' + mine_n + '</b> ' + (mine_n === 1 ? 'stroke' : 'strokes') + ' of your own on the canvas' + (tape.strokes ? ', over ' + P.done.toLocaleString('en') + ' of the painter’s' : '') + '. The paint is wet: drag through it.';
+      else if (current === 'blank') $('count').innerHTML = 'A toned canvas. Pick a colour and paint.';
       else $('count').innerHTML = P.finished ? '<b>' + tape.strokes.toLocaleString('en') + '</b> strokes laid. The paint is still wet.'
         : 'stroke <b>' + P.done.toLocaleString('en') + '</b> of ' + tape.strokes.toLocaleString('en');
-      if (document.activeElement !== $('seek') || seekTo === null) if (!dragging) $('seek').value = Math.round(P.progress * 1000);
+      if (document.activeElement !== $('seek') || seekTo === null) if (!dragging) $('seek').value = Math.round((P.progress || 0) * 1000);
       $('play').textContent = film ? 'Play' : P.finished ? 'Again' : playing ? 'Pause' : 'Play';
     }
     requestAnimationFrame(frame);
   }
 
-  function restart() { if (!P) return; stopFilm(); P.reset(); P.paint(ctx, true); vt = 0; seekTo = null; }
+  function fresh() { P.reset(); P.paint(ctx, true); vt = 0; seekTo = null; mine_n = 0; $('undo').disabled = true; }   // the canvas starts over: no stroke of the hand is left to take off
+  function restart() { if (!P) return; stopFilm(); fresh(); }
 
   // ---- the evening: lay every stroke again for each moment, keep the pictures, then let them run
   function stopFilm() {
@@ -105,7 +112,7 @@
     if (!P || !light) return;
     film = { n: small ? 10 : 16, frames: [], pending: false, t: 0, dir: 1 };
     $('evening').textContent = 'Stop';
-    P.setMoment(light, 0); P.reset(); P.paint(ctx, true);
+    P.setMoment(light, 0); fresh();
   }
   function filmStep(dt) {
     const f = film;
@@ -133,7 +140,7 @@
   function setHour(t) {
     if (!P || !light) return;
     stopFilm();
-    P.setMoment(light, t); P.reset(); P.paint(ctx, true); vt = 0; seekTo = null; playing = true; fast = true;
+    P.setMoment(light, t); fresh(); playing = true; fast = true;
   }
   $('hour').addEventListener('change', () => setHour($('hour').value / 1000));
   $('play').addEventListener('click', () => { if (film) { const t = film.t / (film.n - 1); stopFilm(); setHour(t); return; } if (P && P.finished) { restart(); playing = true; } else playing = !playing; });
@@ -146,7 +153,7 @@
     if (!P) return;
     stopFilm();
     const f = seek.value / 1000;
-    if (f < P.progress) { P.reset(); P.paint(ctx, true); }
+    if (f < P.progress) fresh();
     seekTo = f; dragging = false;
   });
   $('save').addEventListener('click', () => {
@@ -179,6 +186,44 @@
     if (d) { e.preventDefault(); setLight(lightX + d[0], lightY + d[1]); }
   });
   setLight(lightX, lightY);
+
+  // ---- your turn: a loaded brush on the same wet canvas
+  const TUBES = [['titanium white', '#f7f5ee'], ['naples yellow', '#f0d58c'], ['cadmium yellow', '#f6c21c'], ['yellow ochre', '#c8963c'], ['cadmium red', '#d8301f'],
+    ['alizarin crimson', '#8c1c2c'], ['burnt sienna', '#8a4524'], ['burnt umber', '#4a2d1c'], ['ultramarine', '#1f2f93'], ['cerulean', '#3d8cc4'],
+    ['viridian', '#1c6a56'], ['sap green', '#4f6b25'], ['ivory black', '#1c1b1a']];
+  let tube = TUBES[8][1], mine_n = 0, path = null, offs = null, run = 0;
+  const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const tubesEl = $('tubes');
+  TUBES.forEach(([name, h]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tube'; b.style.background = h; b.title = name; b.setAttribute('aria-label', name);
+    b.setAttribute('aria-pressed', h === tube ? 'true' : 'false');
+    b.addEventListener('click', () => { tube = h; for (const o of tubesEl.children) o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+    tubesEl.appendChild(b);
+  });
+  function at(e) { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height]; }
+  function lay() { P.userStroke(path, { rgb: hex(tube), size: $('brush').value / 1000 * P.H, knife: $('knife').checked, offs }); }
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!P || e.button > 0) return;
+    e.preventDefault(); canvas.setPointerCapture(e.pointerId);
+    stopFilm(); playing = false; seekTo = null;
+    P.beginStroke(); path = [at(e)]; run = 0; offs = [Math.random(), Math.random(), Math.random(), Math.random()];
+    lay(); mine_n++; $('undo').disabled = false;
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!path || !P) return;
+    const p = at(e), q = path[path.length - 1];
+    if (Math.hypot(p[0] - q[0], p[1] - q[1]) < 1.5) return;
+    path.push(p); run += Math.hypot(p[0] - q[0], p[1] - q[1]);
+    lay();
+    if (run > 3 * P.H) {                                   // a very long pull: the brush is reloaded and carries on
+      P.beginStroke(); path = [q, p]; run = 0; offs = [Math.random(), Math.random(), Math.random(), Math.random()];
+      lay(); mine_n++;
+    }
+  });
+  const lift = () => { path = null; };
+  canvas.addEventListener('pointerup', lift); canvas.addEventListener('pointercancel', lift);
+  $('undo').addEventListener('click', () => { if (P && !path) { P.undoStroke(); mine_n = Math.max(0, mine_n - 1); $('undo').disabled = true; } });
 
   const wanted = location.hash.slice(1);
   open(PAINTINGS.some((p) => p.id === wanted) ? wanted : PAINTINGS[0].id);
