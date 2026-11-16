@@ -92,7 +92,8 @@ jobs:
         run: |
           mkdir -p work/seq
           python -c "from PIL import Image, ImageEnhance; im = Image.open('out/fuji_pbr.png').convert('RGB'); [ImageEnhance.Brightness(im).enhance(1 - 0.22 * i).save(f'work/seq/{i:03d}.png') for i in range(4)]"
-          python "$GITHUB_WORKSPACE/skills/procedural-painting/scripts/motion.py" --frames work/seq --out out/moving.mp4 --keys 2 --jobs 2 --height 200
+          python "$GITHUB_WORKSPACE/skills/procedural-painting/scripts/motion.py" --frames work/seq --out out/moving.mp4 --keys 2 --jobs 2 --height 200 --tape out/moving.tape
+          test -s out/moving.tape && test -s out/moving.tape.light.jpg
           test -f out/moving.mp4 || test -f out/moving_frames/00003.png      # no ffmpeg on the runner: frames kept
       - name: Painting in sittings (init, two sittings, resume, final, bundle)
         working-directory: ${{ runner.temp }}

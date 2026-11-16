@@ -27,6 +27,10 @@ Header: {version, title, aspect (W/H), height (pixels it was recorded at), groun
                   later stroke covers an earlier one, and all of them pick up the paint that was
                   on the canvas before the group started
         mask      null, or {"w", "h", "off"}: h*w bytes, the outline strokes are cut at (0..255)
+        seed      only when params.field (the colour was read from a study): offset of
+                  uint8 seed[3n], the study's colour where each stroke read it, sRGB
+        at        only with seed, when that spot is not the start of the path: offset of
+                  int16 at[2n] (x, y pairs), 1/8192 of the height
         off       start of this pass's arrays in the blob (always even), in this order:
                     int16  x0[n], y0[n]      start of each path, 1/8192 of the height
                     uint16 width[n]          1/262144 of the height
@@ -39,6 +43,12 @@ Header: {version, title, aspect (W/H), height (pixels it was recorded at), groun
                                              sum of (count - 1)
     {"op": "glaze", "w", "h", "off"}   h*w bytes of strength (0..255), then h*w*3 bytes of sRGB
     {"op": "dry", "amount"}
+
+A moving painting (motion.py --tape) adds "light" to the header: {"file", "n", "cols", "rows",
+"w", "h"}: an image beside the tape holding n small studies in a grid, first to last moment of
+the film. A player lays the strokes with params.field in the colours of any moment:
+colour = now + (colour - seed) * g, with g the ratio of the two luminances (+0.08), kept in
+0.3..1.6; strokes with params.fade are laid only as strongly as their spot is lit.
 """
 import json
 import struct
@@ -52,8 +62,9 @@ def _pad(blob):
         blob.append(0)
 
 
-def save_tape(p, path, title=None):
-    """Write the tape of a Painting made with tape=True. Returns the file size in bytes."""
+def save_tape(p, path, title=None, extra=None):
+    """Write the tape of a Painting made with tape=True. Returns the file size in bytes. `extra`
+    is merged into the header (motion.py records its light sheet there)."""
     if p.tape is None:
         raise RuntimeError("construct the Painting with tape=True to record a tape")
     blob = bytearray()
@@ -101,11 +112,19 @@ def save_tape(p, path, title=None):
             mask = dict(w=int(cm.shape[1]), h=int(cm.shape[0]), off=len(blob))
             blob += cm.tobytes()
         prm = {k: (v if isinstance(v, (str, bool)) else float(v)) for k, v in rec['params'].items()}
-        ops.append(dict(op='strokes', n=int(n), step=step / H, params=prm, sittings=[int(len(g)) for g in rec['sittings']],
-                        off=off, points=int(keep.sum()), mask=mask))
+        op = dict(op='strokes', n=int(n), step=step / H, params=prm, sittings=[int(len(g)) for g in rec['sittings']],
+                  off=off, points=int(keep.sum()), mask=mask)
+        if prm.get('field'):                                  # the colour was read from a study: keep what it read, and where
+            op['seed'] = len(blob)
+            blob += (np.clip(rec['seed'][order], 0, 1) * 255 + 0.5).astype(np.uint8).tobytes()
+            if rec.get('at') is not None:
+                _pad(blob)
+                op['at'] = len(blob)
+                blob += np.clip(np.rint(rec['at'][order] / H * 8192), -32768, 32767).astype('<i2').tobytes()
+        ops.append(op)
         total += int(n)
     head = json.dumps(dict(version=1, title=title or '', aspect=p.W / p.H, height=p.H,
-                           ground=[float(v) for v in p._ground], weave=float(p.weave), strokes=total, ops=ops),
+                           ground=[float(v) for v in p._ground], weave=float(p.weave), strokes=total, ops=ops, **(extra or {})),
                       separators=(',', ':')).encode()
     data = zlib.compress(b'ATL1' + struct.pack('<I', len(head)) + head + bytes(blob), 9)
     with open(path, 'wb') as f:

@@ -17,6 +17,8 @@ All notable changes to this project are documented here. Versions follow [semant
 - Palette knife: `knife=True` on a pass, or on the whole painting. Limited palettes: `Painting(palette=[...])` keeps every colour on the brush inside what a few tubes can mix.
 - Strokes no longer poke over a mask edge, and a soft mask thins strokes instead of turning them into stray dabs.
 - The easel (`docs/paint`): `scripts/tape.py` and `--tape` export a painting's strokes (0.7–2 MB); a JavaScript port of the simulator replays them live in the browser at any size, with a movable light.
+- Moving paintings on the easel: `motion.py --tape FILE` writes the film's whole set of strokes as a tape with a sheet of small studies beside it (`FILE.light.jpg`, `--lights` moments). The browser player lays the same strokes in the light of any moment (`Painting.setMoment`); the easel page has an hour slider and plays the evening through. Tapes now carry, for study-coloured passes, the colour each stroke read and where.
+- `marks()` and `dabs()` coloured from a study follow a new study on `replay`, like stroke passes.
 - `scripts/repaint.py` repaints an existing image with the same paint. With `--aov` (the painter buffers of a `pbr_terrain.py --aov` render) it paints a real mountain by its ground: slopes down the fall lines, snow late and thick, water dragged down and cut across, the skyline cut in. With `--geom` (the geometry cache of a `pbr_terrain.py --geom-cache` render) it paints a real mountain by depth: the sky as one swept mass, far ground kept simple, near ground in broken colour, the skyline as a found edge.
 
 ### Web app

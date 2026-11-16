@@ -6,6 +6,7 @@
     { id: 'rain_at_blue_hour', title: 'Rain at blue hour' },
     { id: 'wind_over_the_barley', title: 'Wind over the barley' },
     { id: 'lemons_and_blue_jug', title: 'Lemons and a blue jug' },
+    { id: 'ararat_dusk_into_night', title: 'Ararat, dusk into night' },
   ];
   const SECONDS = 50;                                   // one painting at 1x
   const $ = (id) => document.getElementById(id);
@@ -16,6 +17,9 @@
   const tapes = {};
   let P = null, current = null, playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let vt = 0, last = 0, seekTo = null, relight = false, token = 0, frameNo = 0, t0 = 0, spent = 0;
+  // a moving painting: the same strokes in the light of any moment of the film
+  let light = null, fast = false, film = null;          // film: { n, frames: [ImageBitmap], next, t, dir } while the evening passes
+  const lights = {};
   window.__easel = { get p() { return P; }, get spent() { return spent; } };      // for tests
 
   const tabs = $('tabs');
@@ -40,7 +44,12 @@
       say('Stretching the canvas…');
       await new Promise((r) => setTimeout(r, 30));      // let the message show before the heavy part
       if (mine !== token) return;
-      const p = new Atelier.Painting(tape, HEIGHT);
+      light = tape.light ? (lights[id] || (lights[id] = await Atelier.loadLight('tapes/' + tape.light.file, tape.light))) : null;
+      if (mine !== token) return;
+      const p = new Atelier.Painting(tape, Math.min(HEIGHT, Math.round((light ? (small ? 720 : 1050) : (small ? 1000 : 1500)) / tape.aspect)));
+      stopFilm(); fast = false;
+      $('hourrow').hidden = !light; $('hour').value = 0;
+      if (light) p.setMoment(light, 0);
       p.light = [lightX, lightY]; p.relief = $('relief').checked ? 1 : 0;
       canvas.width = p.W; canvas.height = p.H;
       p.paint(ctx, true);
@@ -57,30 +66,77 @@
     const dt = Math.min(0.1, (t - last) / 1000 || 0); last = t; frameNo++;
     if (P) {
       const a = performance.now();
-      if (seekTo !== null) {
+      if (film) filmStep(dt);
+      else if (seekTo !== null) {
         if (P.advance(seekTo, 20)) { vt = P.progress * SECONDS; seekTo = null; P.paint(ctx); }
         else if (frameNo % 5 === 0) P.paint(ctx);
       } else {
         if (playing && !P.finished) {
           const sp = $('speed').value;
-          if (sp === 'max') { P.advance(1, 11); vt = P.progress * SECONDS; }
+          if (sp === 'max' || fast) { P.advance(1, 11); vt = P.progress * SECONDS; }
           else { vt += dt * parseFloat(sp); if (!P.advance(vt / SECONDS, 9)) vt = P.progress * SECONDS; }
         }
         P.paint(ctx);
       }
-      if (relight) { P.paint(ctx, 'light'); relight = false; }
+      if (relight && !film) { P.paint(ctx, 'light'); relight = false; }
+      if (P.finished) fast = false;
       spent += performance.now() - a;
       const tape = P.tape;
-      $('count').innerHTML = P.finished ? '<b>' + tape.strokes.toLocaleString('en') + '</b> strokes laid. The paint is still wet.'
+      if (film) $('count').innerHTML = film.frames.length < film.n
+        ? 'painting the light of moment <b>' + (film.frames.length + 1) + '</b> of ' + film.n + ', every stroke again'
+        : 'the same <b>' + tape.strokes.toLocaleString('en') + '</b> strokes, ' + film.n + ' moments of light';
+      else $('count').innerHTML = P.finished ? '<b>' + tape.strokes.toLocaleString('en') + '</b> strokes laid. The paint is still wet.'
         : 'stroke <b>' + P.done.toLocaleString('en') + '</b> of ' + tape.strokes.toLocaleString('en');
       if (document.activeElement !== $('seek') || seekTo === null) if (!dragging) $('seek').value = Math.round(P.progress * 1000);
-      $('play').textContent = P.finished ? 'Again' : playing ? 'Pause' : 'Play';
+      $('play').textContent = film ? 'Play' : P.finished ? 'Again' : playing ? 'Pause' : 'Play';
     }
     requestAnimationFrame(frame);
   }
 
-  function restart() { if (!P) return; P.reset(); P.paint(ctx, true); vt = 0; seekTo = null; }
-  $('play').addEventListener('click', () => { if (P && P.finished) { restart(); playing = true; } else playing = !playing; });
+  function restart() { if (!P) return; stopFilm(); P.reset(); P.paint(ctx, true); vt = 0; seekTo = null; }
+
+  // ---- the evening: lay every stroke again for each moment, keep the pictures, then let them run
+  function stopFilm() {
+    if (!film) return;
+    film.frames.forEach((b) => b.close && b.close());
+    film = null; $('evening').textContent = 'Let the evening pass';
+  }
+  function startFilm() {
+    if (!P || !light) return;
+    film = { n: small ? 10 : 16, frames: [], pending: false, t: 0, dir: 1 };
+    $('evening').textContent = 'Stop';
+    P.setMoment(light, 0); P.reset(); P.paint(ctx, true);
+  }
+  function filmStep(dt) {
+    const f = film;
+    if (f.frames.length < f.n) {                           // still painting the moments
+      if (f.pending) return;
+      if (!P.finished) { P.advance(1, 28); P.paint(ctx); return; }
+      P.paint(ctx, true);
+      f.pending = true;
+      createImageBitmap(P.img).then((bmp) => {
+        if (film !== f) { bmp.close && bmp.close(); return; }
+        f.frames.push(bmp); f.pending = false;
+        $('hour').value = Math.round(1000 * (f.frames.length - 1) / (f.n - 1));
+        if (f.frames.length < f.n) { P.setMoment(light, f.frames.length / (f.n - 1)); P.reset(); }
+      });
+      return;
+    }
+    f.t += f.dir * dt * 3;                                  // three moments a second, there and back
+    if (f.t >= f.n - 1) { f.t = f.n - 1; f.dir = -1; } else if (f.t <= 0) { f.t = 0; f.dir = 1; }
+    const i = Math.min(f.n - 2, f.t | 0), k = f.t - i;
+    ctx.globalAlpha = 1; ctx.drawImage(f.frames[i], 0, 0);
+    ctx.globalAlpha = k; ctx.drawImage(f.frames[i + 1], 0, 0); ctx.globalAlpha = 1;
+    $('hour').value = Math.round(1000 * f.t / (f.n - 1));
+  }
+  $('evening').addEventListener('click', () => { if (film) { const t = film.t / (film.n - 1); stopFilm(); setHour(t); } else startFilm(); });
+  function setHour(t) {
+    if (!P || !light) return;
+    stopFilm();
+    P.setMoment(light, t); P.reset(); P.paint(ctx, true); vt = 0; seekTo = null; playing = true; fast = true;
+  }
+  $('hour').addEventListener('change', () => setHour($('hour').value / 1000));
+  $('play').addEventListener('click', () => { if (film) { const t = film.t / (film.n - 1); stopFilm(); setHour(t); return; } if (P && P.finished) { restart(); playing = true; } else playing = !playing; });
   $('restart').addEventListener('click', () => { restart(); playing = true; });
   let dragging = false;
   const seek = $('seek');
@@ -88,6 +144,7 @@
   window.addEventListener('pointerup', () => { dragging = false; });
   seek.addEventListener('change', () => {
     if (!P) return;
+    stopFilm();
     const f = seek.value / 1000;
     if (f < P.progress) { P.reset(); P.paint(ctx, true); }
     seekTo = f; dragging = false;
@@ -100,7 +157,7 @@
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     }, 'image/png');
   });
-  $('relief').addEventListener('change', () => { if (P) { P.relief = $('relief').checked ? 1 : 0; relight = true; } });
+  $('relief').addEventListener('change', () => { if (P) { stopFilm(); P.relief = $('relief').checked ? 1 : 0; relight = true; } });
 
   // the lamp: the dot is where the light comes from
   let lightX = -0.55, lightY = -0.62;
@@ -112,7 +169,7 @@
     knob.style.transform = 'translate(' + (x * 27).toFixed(1) + 'px,' + (y * 27).toFixed(1) + 'px)';
     const names = [['upper left', 'above', 'upper right'], ['left', 'straight on', 'right'], ['lower left', 'below', 'lower right']];
     dial.setAttribute('aria-valuetext', names[y < -0.3 ? 0 : y > 0.3 ? 2 : 1][x < -0.3 ? 0 : x > 0.3 ? 2 : 1]);
-    if (P) { P.light = [x, y]; relight = true; }
+    if (P) { if (film) stopFilm(); P.light = [x, y]; relight = true; }
   }
   function fromPointer(e) { const r = dial.getBoundingClientRect(); setLight((e.clientX - r.left - r.width / 2) / 27, (e.clientY - r.top - r.height / 2) / 27); }
   dial.addEventListener('pointerdown', (e) => { dial.setPointerCapture(e.pointerId); fromPointer(e); });

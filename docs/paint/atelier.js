@@ -175,6 +175,8 @@
       op.offs = new Uint8Array(cut(o, 4 * m)); o += 4 * m;
       op.delta = new Int8Array(cut(o, 2 * op.points));
       if (op.mask) op.mask.data = new Uint8Array(cut(op.mask.off, op.mask.w * op.mask.h));
+      if (op.seed !== undefined) op.seedC = new Uint8Array(cut(op.seed, 3 * m));       // what the study said where the stroke read it
+      if (op.at !== undefined) op.atXY = new Int16Array(cut(op.at, 4 * m));
       op.start = new Uint32Array(m);                       // where each stroke's steps begin
       let acc = 0;
       for (let i = 0; i < m; i++) { op.start[i] = acc; acc += op.count[i] - 1; }
@@ -185,6 +187,20 @@
     head.clock = new Float64Array(weights.length + 1);
     for (let i = 0; i < weights.length; i++) head.clock[i + 1] = head.clock[i] + weights[i];
     return head;
+  }
+
+  /** The light sheet of a moving painting: n small studies, first to last moment of the film. */
+  async function loadLight(url, info) {
+    const im = new Image();
+    im.src = url;
+    await im.decode();
+    const c = document.createElement('canvas');
+    c.width = im.naturalWidth; c.height = im.naturalHeight;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(im, 0, 0);
+    const frames = [];
+    for (let j = 0; j < info.n; j++) frames.push(g.getImageData((j % info.cols) * info.w, ((j / info.cols) | 0) * info.h, info.w, info.h).data);
+    return { n: info.n, w: info.w, h: info.h, frames };
   }
 
   class Painting {
@@ -210,8 +226,20 @@
       this.scrub = valueNoise(W, H, 60 * this.px, rnd, 3);   // a toned ground is scrubbed on, never flat
       this.img = new ImageData(W, H);
       this.light = [-0.55, -0.62]; this.relief = 1; this.gloss = 0.35;
+      this.study = null;                                    // set by setMoment for a moving painting
       this.pathX = new Float32Array(1024); this.pathY = new Float32Array(1024);
       this.reset();
+    }
+
+    /** Paint by the light of moment t (0..1) of a moving painting; null = as it was recorded.
+        Takes effect for strokes laid from now on: reset() to lay the whole canvas in that light. */
+    setMoment(light, t) {
+      if (!light || t === null) { this.study = null; return; }
+      const f = Math.min(Math.max(t, 0), 1) * (light.n - 1), i0 = Math.min(light.n - 2, f | 0), k = f - i0;
+      const a = light.frames[i0], b = light.frames[i0 + 1], n = light.w * light.h;
+      if (!this.study || this.study.length !== n * 3) this.study = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) this.study[i * 3 + c] = a[i * 4 + c] * (1 - k) + b[i * 4 + c] * k;
+      this.sw = light.w; this.sh2 = light.h;
     }
 
     reset() {
@@ -375,11 +403,33 @@
 
       // the paint: what each of those pixels gets
       const q1 = Painting._q1, q2 = Painting._q2, qc = Painting._qc;
-      rgbToQ(op.c1[i * 3], op.c1[i * 3 + 1], op.c1[i * 3 + 2], q1, 0);
-      rgbToQ(op.c2[i * 3], op.c2[i * 3 + 1], op.c2[i * 3 + 2], q2, 0);
-      const run = op.runout[i] / 255, load = P.load, opacity = P.opacity, pickup = P.pickup, dry = P.dry, marble = P.marble;
+      let lit = 1;
+      if (this.study && P.field && op.seedC) {
+        // the same stroke in another light: the study's colour here now, plus this stroke's own departure from it
+        const S = this.study, sw = this.sw, sh_ = this.sh2;
+        let fx = (op.atXY ? op.atXY[i * 2] : op.x0[i]) / 8192 * sh_ - 0.5, fy = (op.atXY ? op.atXY[i * 2 + 1] : op.y0[i]) / 8192 * sh_ - 0.5;
+        fx = fx < 0 ? 0 : fx > sw - 1.001 ? sw - 1.001 : fx; fy = fy < 0 ? 0 : fy > sh_ - 1.001 ? sh_ - 1.001 : fy;
+        const ix = fx | 0, iy = fy | 0, tx = fx - ix, ty = fy - iy, o = (iy * sw + ix) * 3;
+        const now = Painting._now;
+        for (let c = 0; c < 3; c++) now[c] = (S[o + c] * (1 - tx) + S[o + 3 + c] * tx) * (1 - ty) + (S[o + sw * 3 + c] * (1 - tx) + S[o + sw * 3 + 3 + c] * tx) * ty;
+        const w0 = op.seedC[i * 3], w1 = op.seedC[i * 3 + 1], w2 = op.seedC[i * 3 + 2];
+        const ln = 0.299 * now[0] + 0.587 * now[1] + 0.114 * now[2], lw = 0.299 * w0 + 0.587 * w1 + 0.114 * w2;
+        let g = (ln + 20.4) / (lw + 20.4); g = g < 0.3 ? 0.3 : g > 1.6 ? 1.6 : g;
+        const cl = (v) => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v));
+        rgbToQ(cl(now[0] + (op.c1[i * 3] - w0) * g), cl(now[1] + (op.c1[i * 3 + 1] - w1) * g), cl(now[2] + (op.c1[i * 3 + 2] - w2) * g), q1, 0);
+        rgbToQ(cl(now[0] + (op.c2[i * 3] - w0) * g), cl(now[1] + (op.c2[i * 3 + 1] - w1) * g), cl(now[2] + (op.c2[i * 3 + 2] - w2) * g), q2, 0);
+        if (P.fade) lit = ss(0.35, 0.8, (ln + 7.65) / (lw + 7.65));        // a lamp is painted only while it is lit
+      } else {
+        rgbToQ(op.c1[i * 3], op.c1[i * 3 + 1], op.c1[i * 3 + 2], q1, 0);
+        rgbToQ(op.c2[i * 3], op.c2[i * 3 + 1], op.c2[i * 3 + 2], q2, 0);
+      }
+      if (lit <= 0) {                                       // nothing to lay: give the pixels back untouched
+        for (let j = 0; j < n; j++) { const id = list[j], o = id * NB; for (let k = 0; k < NB; k++) q[o + k] = sq[o + k]; h[id] = sh[id]; wet[id] = swet[id]; this._lin(id); }
+        return;
+      }
+      const run = op.runout[i] / 255, load = P.load, opacity = P.opacity * lit, pickup = P.pickup, dry = P.dry, marble = P.marble;
       const clip = P.clip, soft = P.soft, mask = op.mask, bpx = 1.5 * Math.max(px, 0.6);
-      const body = P.thickness * px * (0.55 + 0.45 * Math.sqrt(w / (30 * px)));
+      const body = P.thickness * lit * px * (0.55 + 0.45 * Math.sqrt(w / (30 * px)));
       const st = Math.max(1, Math.floor(this.tape.height / 256)) * H / this.tape.height;   // one mask cell, in our pixels
       for (let j = 0; j < n; j++) {
         const id = list[j], uu = zu[id] * du, vv = zv[id] / (nv - 1) - 0.5, un = uu / L;
@@ -553,7 +603,7 @@
       }
     }
   }
-  Painting._q1 = new Float32Array(NB); Painting._q2 = new Float32Array(NB); Painting._qc = new Float32Array(NB);
+  Painting._q1 = new Float32Array(NB); Painting._q2 = new Float32Array(NB); Painting._qc = new Float32Array(NB); Painting._now = new Float32Array(3);
 
-  global.Atelier = { Painting, loadTape, parseTape };
+  global.Atelier = { Painting, loadTape, parseTape, loadLight };
 })(typeof self !== 'undefined' ? self : this);

@@ -66,3 +66,9 @@ h1 .thin{font-weight:600;color:var(--contour)}
   .plate{grid-template-columns:minmax(0,1fr)}
   .main{order:-1}
 }
+.hourrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:.76rem;color:var(--muted)}
+.hourrow[hidden]{display:none}
+.hourrow .seek{flex:1 1 220px}
+.hourrow button{font-family:var(--mono);font-size:.76rem;letter-spacing:.03em;padding:8px 12px;min-height:38px;border:1px solid var(--rule);border-radius:2px;background:transparent;cursor:pointer;color:inherit}
+.hourrow button:hover{border-color:var(--contour)}
+.hourrow p{flex:1 1 100%;margin:0;font-family:inherit;line-height:1.5}

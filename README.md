@@ -90,7 +90,7 @@ A flat study has to be drawn by hand, which is why figures and interiors were ou
 
 ### Watch one paint itself
 
-**[The easel](https://dogum.github.io/procedural-art/paint/)** is not a video. The page holds the list of strokes and a JavaScript port of the paint simulator, and your browser lays every stroke again, wet into wet, in 10 to 25 seconds. Drag the light to see that the paint has thickness.
+**[The easel](https://dogum.github.io/procedural-art/paint/)** is not a video. The page holds the list of strokes and a JavaScript port of the paint simulator, and your browser lays every stroke again, wet into wet, in 10 to 25 seconds. Drag the light to see that the paint has thickness. The fifth canvas, *Ararat, dusk into night*, is a moving painting: pick an hour and the same 42,000 strokes are laid again in that hour's light, or let the whole evening pass.
 
 ### Real mountains, painted by their ground
 
