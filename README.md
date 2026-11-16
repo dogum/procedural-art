@@ -25,7 +25,6 @@ It started as an attempt to recreate an AI-generated header of Mount Ararat with
 |---|---|
 | **[procedural-terrain-art](skills/procedural-terrain-art)** | Any real mountain, range, canyon or island in six print styles, looping orbit videos, and a self-contained interactive studio page. |
 | **[procedural-realism](skills/procedural-realism)** | Photographic terrain (sky, haze, snow, lakes, forests, city lights, sun timelapses), a path tracer for glass and metal still lifes, and a painterly finisher for any image. |
-
 | **[procedural-painting](skills/procedural-painting)** | An original oil painting of any subject, composed in code and laid as simulated brush strokes with real pigment mixing and impasto, plus a film of the canvas being painted. |
 
 Every terrain pixel comes from SRTM-derived elevation, numpy and physics. Nothing is downloaded except elevation tiles, and no generative model is involved at any step.
