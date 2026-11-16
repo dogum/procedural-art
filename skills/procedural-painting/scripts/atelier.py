@@ -804,7 +804,9 @@ class Painting:
         order = rng.permutation(N) if batches else np.arange(N)
         budget = 3_500_000
         groups, cur, cnt = [], [], 0
-        per_sitting = int(np.ceil(N / max(batches, 1))) if batches else N
+        # drawn marks are laid one at a time when there are few, so a later line's dry gaps show the
+        # earlier line under it, not the canvas from before the pass
+        per_sitting = int(np.ceil(N / max(batches, 1))) if batches else (1 if N <= 64 else int(np.ceil(N / 64)))
         for i in order:
             c = nu_all[i] * nv
             if cur and (cnt + c > budget or len(cur) >= per_sitting):
