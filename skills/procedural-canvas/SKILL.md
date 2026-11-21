@@ -57,10 +57,12 @@ Read `references/architecture.md` before writing the first line and `references/
 ## A real mountain in the file
 
 ```bash
-python $SK/scripts/bake_dem.py --help
+python $SK/scripts/bake_dem.py --npz work/fuji/dem.npz --camera 35.5222,138.7650 --look 35.3606,138.7274 \
+    --lake 829 --date 2026-11-10 --time 07:05 --tz 9 --name "Mount Fuji from the north shore of Lake Kawaguchi" \
+    --out block.js --into piece.html
 ```
 
-It takes an elevation grid (the `dem.npz` that `procedural-realism` and `procedural-terrain-art` cache, or any array of metres with its bounds), crops and resamples it, and prints the block to paste into the piece. The piece then renders the terrain from a stated viewpoint (latitude, longitude, height, heading) with the sun where it is at a stated time. Write in a comment, and in a small caption on the page, what is real (terrain, viewpoint, sun) and what is invented (foreground, trees, weather).
+It takes an elevation cache (the `dem.npz` that `procedural-realism` and `procedural-terrain-art` write, or any file with `elev`, `lats`, `lons`), a camera position and a point to look at. It bakes the ground as that camera sees it, a fan of depth profiles with Earth curvature already removed, computes where the Sun is at the given time, and writes the block between the `DEM-BEGIN` and `DEM-END` markers of the piece (and to `--out`, `block.js` by default). The command above reproduces the block in `assets/fuji-at-first-light.html` exactly. The format is documented at the top of the script and of `assets/fuji-at-first-light.html`, which shows how to read it and scan it into a picture. Getting the elevation needs one of the terrain skills (`dem.py`); this skill does not fetch it. Write in a comment, and in a small caption on the page, what is real (terrain, viewpoint, sun) and what is invented (foreground, trees, weather).
 
 ## What to tell the user
 

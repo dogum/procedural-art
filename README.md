@@ -209,9 +209,9 @@ A Monte Carlo path tracer in plain numpy. Scenes are small JSON files: spheres, 
 
 ## One file, one landscape
 
-<img src="docs/media/cv_larkspur_mere.jpg" alt="A snow-covered massif mirrored in a still green lake, a lone pine on an island, an old tree on the left bank: drawn by one HTML file" width="840">
+<img src="docs/media/cv_fuji_at_first_light.jpg" alt="Mount Fuji with snow in its gullies, mirrored in a still lake at dawn, a pine on the left and a red maple branch on the right: drawn by one HTML file" width="840">
 
-Each of these is a single HTML file of Canvas and plain JavaScript. It holds no image and loads nothing; open it and the browser computes the picture in 3 to 10 seconds, the same every time for the same `?seed=`. **[Open the gallery](https://dogum.github.io/procedural-art/canvas/)** and watch them paint.
+Each of these is a single HTML file of Canvas and plain JavaScript. It holds no image and loads nothing; open it and the browser computes the picture in 3 to 10 seconds, the same every time for the same `?seed=`. The Fuji above is the real mountain: the file carries elevation data for the ground its camera sees from Lake Kawaguchi, and the Sun stands where it was that morning; the bank, the trees and the weather are invented. **[Open the gallery](https://dogum.github.io/procedural-art/canvas/)** and watch them paint.
 
 <table>
 <tr>
@@ -224,11 +224,13 @@ Each of these is a single HTML file of Canvas and plain JavaScript. It holds no 
 </tr>
 </table>
 
-The gallery started as a comparison. *Crystal Tarn* (Claude) and *Larkspur Mere* (OpenAI Codex, the picture above) were made from the same prompt, word for word. Claude composed a painting in screen space and lit it afterwards; Codex built a small world in metres and rendered it, and its mountains are clearly the better ones:
+The gallery started as a comparison. *Crystal Tarn* (Claude) and *Larkspur Mere* (OpenAI Codex) were made from the same prompt, word for word. Claude composed a painting in screen space and lit it afterwards; Codex built a small world in metres and rendered it, and its mountains are clearly the better ones:
+
+<img src="docs/media/cv_larkspur_mere.jpg" alt="First Light at Larkspur Mere: a snow-covered massif mirrored in a still green lake, a lone pine on an island" width="840">
 
 <img src="docs/media/cv_same_prompt_mountains.jpg" alt="The mountains of both pieces at full size: soft glowing ridges on the left, crisp snow, rock and cast shadows on the right" width="840">
 
-The four Codex pieces are kept exactly as generated, with credit. What both approaches teach (terrain as geometry in metres, water in linear light with Fresnel, refraction and absorption, each landform reflected about its own waterline, light shafts only where something breaks the light) is written up as the `procedural-canvas` skill, with a headless harness that renders a piece, times it and checks that a second render is identical.
+The four Codex pieces are kept exactly as generated, with credit. What both approaches teach (terrain as geometry in metres, water in linear light with Fresnel, refraction and absorption, each landform reflected about its own waterline, light shafts only where something breaks the light) is written up as the `procedural-canvas` skill, with a headless harness that renders a piece, times it and checks that a second render is identical, and `bake_dem.py`, which puts a real mountain into a file. *Fuji at first light* was made with it.
 
 ## Install
 
