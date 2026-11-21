@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Whole landscapes painted by one HTML file each: Canvas and plain JavaScript, no images, no libraries, no network. The same prompt given to two models, side by side.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26 L12 10 L17 17 L21 12 L30 26 Z' fill='%23d8935c'/%3E%3C/svg%3E">
+<title>One file, one landscape · procedural-art</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../paint/paint.css">
+<style>
+.lede{max-width:62ch;font-size:1.1rem;margin:.6em 0 0}
+.pieces{display:grid;gap:clamp(28px,5vw,64px);padding-top:clamp(24px,4vw,48px)}
+.piece{margin:0;display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:clamp(16px,3vw,40px);align-items:start}
+.piece .frame{display:block}
+.piece img{display:block;width:100%;height:auto}
+.piece h3{font-family:var(--display);font-weight:800;text-transform:uppercase;font-size:clamp(1.5rem,2.6vw,2.2rem);line-height:.95;margin:0 0 .3em;text-wrap:balance}
+.piece p{margin:0 0 .7em;font-size:1rem}
+.piece .by,.piece .facts{font-family:var(--mono);font-size:.76rem;color:var(--muted);line-height:1.6}
+.piece .by b{color:var(--ink);font-weight:500}
+.piece code,.note code{font-family:var(--mono);font-size:.9em}
+.btn{display:inline-block;font-family:var(--mono);font-size:.78rem;letter-spacing:.03em;padding:9px 14px;border:1px solid var(--ink);border-radius:2px;background:var(--ink);color:var(--paper);text-decoration:none}
+.btn:hover{background:var(--contour);border-color:var(--contour)}
+.note{border-top:1px solid var(--rule);margin-top:clamp(28px,5vw,64px);padding-top:18px;max-width:78ch}
+.note h2{font-family:var(--display);font-weight:800;text-transform:uppercase;font-size:1.5rem;margin:0 0 .4em}
+.note img{display:block;width:100%;height:auto;border-radius:2px;margin:.8em 0 .4em}
+.note .cap{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+details{margin:1em 0} summary{cursor:pointer;font-family:var(--mono);font-size:.8rem}
+pre{white-space:pre-wrap;font-family:var(--mono);font-size:.78rem;line-height:1.55;background:var(--sheet);padding:14px;border-radius:2px;overflow:auto}
+@media (max-width:820px){.piece{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span><b>procedural-art</b> · one file, one landscape</span><nav aria-label="Site"><a href="../">Showcase</a><a href="../paint/">The easel</a><a href="https://github.com/dogum/procedural-art">GitHub</a></nav></div>
+  <h1>One file, <span class="thin">one landscape</span></h1>
+  <p class="lede">Each picture below is a single HTML file of Canvas and plain JavaScript. It holds no image and loads nothing; open it and your browser computes every pixel in a few seconds. Change <code>?seed=</code> in the address for another version of the same place.</p>
+
+  <div class="pieces"><!--PIECES-->
+      <figure class="piece" id="crystal-tarn">
+        <a class="frame" href="crystal-tarn.html"><img src="../media/cv_crystal_tarn.jpg" alt="Oil-like sunrise over an alpine lake framed by two large trees, with mossy boulders and wildflowers in the foreground" width="1600" height="900"></a>
+        <figcaption>
+          <h3>Dawn over the Crystal Tarn</h3>
+          <p class="by">Made by <b>Claude</b> · from <a href="prompts/crystal-tarn-and-larkspur-mere.md">the shared prompt</a></p>
+          <p>Layers composed in screen space and lit in post: a sunrise sky, ridge-profile mountains, fractal trees with about 54,000 leaves on the oak, light shafts, bloom and a warm grade.</p>
+          <p class="facts">default seed <code>1847</code> · <code>?seed=anything</code> · about 3 s to paint</p>
+          <p><a class="btn" href="crystal-tarn.html">Open it and watch it paint</a></p>
+        </figcaption>
+      </figure>
+      <figure class="piece" id="larkspur-mere">
+        <a class="frame" href="larkspur-mere.html"><img src="../media/cv_larkspur_mere.jpg" alt="A snow-covered massif mirrored in a still green lake, a lone pine on an island, an old tree on the left bank" width="1600" height="900" loading="lazy"></a>
+        <figcaption>
+          <h3>First Light at Larkspur Mere</h3>
+          <p class="by">Made by <b>OpenAI Codex</b> · from <a href="prompts/crystal-tarn-and-larkspur-mere.md">the shared prompt</a></p>
+          <p>A small world in metres with a pinhole camera: a heightfield with runoff-carved gullies and cast shadows, about 47,000 trees rooted on the terrain, and water in linear light with Fresnel, refraction and absorption.</p>
+          <p class="facts">default seed <code>larkspur-17</code> · <code>?seed=anything</code> · about 5 s to paint</p>
+          <p><a class="btn" href="larkspur-mere.html">Open it and watch it paint</a></p>
+        </figcaption>
+      </figure>
+      <figure class="piece" id="rook-head">
+        <a class="frame" href="rook-head.html"><img src="../media/cv_rook_head.jpg" alt="A breaking green wave in front of a sea arch and a red and white lighthouse on a headland under storm cloud" width="1600" height="900" loading="lazy"></a>
+        <figcaption>
+          <h3>The Lantern at Rook Head</h3>
+          <p class="by">Made by <b>OpenAI Codex</b> · from <a href="prompts/rook-head.md">no prompt beyond “make another scene”</a></p>
+          <p>A sea arch sphere-traced as a distance field, a light-marched cloud volume, a Gerstner-wave ocean with a plunging breaker, and a rasterised lighthouse, cottages and cutter.</p>
+          <p class="facts">default seed <code>rook-29</code> · <code>?seed=anything</code> · about 6 s to paint</p>
+          <p><a class="btn" href="rook-head.html">Open it and watch it paint</a></p>
+        </figcaption>
+      </figure>
+      <figure class="piece" id="the-last-vespers">
+        <a class="frame" href="the-last-vespers.html"><img src="../media/cv_the_last_vespers.jpg" alt="A ruined Gothic abbey beside a loch at dusk with a full moon behind its tracery window and bare oaks on the far bank" width="1600" height="900" loading="lazy"></a>
+        <figcaption>
+          <h3>The Last Vespers</h3>
+          <p class="by">Made by <b>OpenAI Codex</b> · from <a href="prompts/the-last-vespers.md">its own detailed prompt</a></p>
+          <p>A ruined abbey in two-point perspective with coursed masonry and tracery, a cratered moon whose light is integrated through the broken window, bare oaks, and a loch. Mist, water and will-o’-the-wisps are animated.</p>
+          <p class="facts">default seed <code>vespers-1049</code> · <code>?seed=anything</code> · about 9 s, then it moves to paint · ?still=1 holds the first frame · Space pauses · S saves a PNG</p>
+          <p><a class="btn" href="the-last-vespers.html">Open it and watch it paint</a></p>
+        </figcaption>
+      </figure>
+      <figure class="piece" id="vesper-reach">
+        <a class="frame" href="vesper-reach.html"><img src="../media/cv_vesper_reach.jpg" alt="A cliff-top citadel with waterfalls falling to the sea at sunset, sea stacks and a rock arch beyond" width="1600" height="900" loading="lazy"></a>
+        <figcaption>
+          <h3>Vesper Reach</h3>
+          <p class="by">Made by <b>OpenAI Codex</b> · from <a href="prompts/vesper-reach.md">its own detailed prompt</a></p>
+          <p>The most engine-like: a triangle mesh drawn by a scanline z-buffer rasteriser, with a mirrored camera for the reflection, a sun shadow map, ambient occlusion and a scattering march through the sea air.</p>
+          <p class="facts">default seed <code>vesper-8731</code> · <code>?seed=anything</code> · about 8 s to paint</p>
+          <p><a class="btn" href="vesper-reach.html">Open it and watch it paint</a></p>
+        </figcaption>
+      </figure>
+  </div>
+
+  <section class="note" id="same-prompt">
+    <h2>The same prompt, two models</h2>
+    <p><a href="#crystal-tarn">Crystal Tarn</a> and <a href="#larkspur-mere">Larkspur Mere</a> were made from one prompt, word for word. Claude composed a painting in screen space and lit it afterwards; Codex built a small world in metres and rendered it. The mountains show the difference most: a ridge line with shading on the left, a heightfield with gullies and cast shadows on the right.</p>
+    <img src="../media/cv_same_prompt_mountains.jpg" alt="The mountains of both pieces at full size, side by side: soft glowing ridges on the left, crisp snow and rock on the right" width="1800" height="388" loading="lazy">
+    <p class="cap">The same crop of both canvases at full size. Left: Claude. Right: OpenAI Codex.</p>
+    <details><summary>The prompt</summary><pre>Create an extraordinary, photorealistic fantasy landscape entirely through procedural code.
+
+Scene: An ancient forest surrounding a crystal-clear alpine lake at sunrise. Towering trees with mathematically generated branching structures, thousands of individually rendered leaves, glowing wildflowers, intricate moss-covered rocks, distant mountains, atmospheric mist, and golden sunlight filtering through the canopy. The perfectly still lake reflects the entire landscape with physically inspired reflections and subtle ripples.
+
+Technical requirements:
+- Use only HTML5 Canvas and vanilla JavaScript.
+- Render at exactly 1920×1080 resolution.
+- No AI-generated images, SVG imports, external assets, libraries, textures, or image files.
+- Generate every pixel procedurally using mathematics and code.
+- Implement fractal branching, layered Perlin/fBm noise, atmospheric scattering, particle systems, volumetric-looking light shafts, procedural terrain, and realistic water reflections.
+- Use thousands of individually computed details and carefully controlled color gradients.
+- Include a seeded random generator for reproducible results.
+- Prioritize visual quality, depth, realistic lighting, and sophisticated composition over code brevity.
+
+The final result should resemble a magnificent 19th-century Romantic landscape painting, with cinematic lighting and extraordinary natural detail.
+
+Deliver one complete, self-contained HTML file (and/or artifact) containing all HTML, CSS, and JavaScript. It must run locally in a browser without internet access. Do not use image generation tools or external resources.</pre></details>
+    <p>Four of the five pieces were made by OpenAI Codex models and are kept here exactly as they were generated, with credit; only the file names changed. What both approaches teach is written up as the <a href="https://github.com/dogum/procedural-art/tree/main/skills/procedural-canvas">procedural-canvas</a> skill.</p>
+  </section>
+</div>
+</body>
+</html>

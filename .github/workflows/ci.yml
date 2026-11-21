@@ -81,6 +81,16 @@ jobs:
           python "$SK/studies/rain_at_blue_hour.py" --height 400 --out out/rain_at_blue_hour.png
           python "$SK/studies/harbour_at_first_light.py" --height 300 --out out/harbour.png --tape out/harbour.tape
           python "$SK/scripts/repaint.py" --in out/fuji_pbr.png --out out/fuji_repainted.png --height 300
+      - name: One-file canvas pieces (self-contained, seeded, the template matches the gallery copy)
+        run: |
+          for f in docs/canvas/*.html skills/procedural-canvas/assets/*.html; do
+            [ "$(basename "$f")" = index.html ] && continue
+            grep -q "<canvas" "$f" || { echo "$f: no canvas"; exit 1; }
+            if grep -Eq "Math\.random\(|<script[^>]+src=|<link[^>]+href=|<img |fetch\(|XMLHttpRequest|import\(" "$f"; then echo "$f: not self-contained or not seeded"; exit 1; fi
+            grep -q "dataset.ready" "$f" || { echo "$f: no done flag"; exit 1; }
+          done
+          for f in skills/procedural-canvas/assets/*.html; do cmp "$f" "docs/canvas/$(basename "$f")"; done
+          node --check skills/procedural-canvas/scripts/render_headless.js
       - name: The 3D stage (an interior with a figure; a path-tracer scene painted)
         working-directory: ${{ runner.temp }}
         run: |
