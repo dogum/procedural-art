@@ -1,0 +1,1312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#132029"><title>The Lantern at Rook Head</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10191e}
+body{display:grid;place-items:center}
+main{position:relative;width:min(100vw,177.777778vh);aspect-ratio:16/9}
+canvas{display:block;width:100%;height:100%;background:#2c3e4a}
+#progress{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);color:#fff2db;background:#142127dd;
+padding:.55em 1em;border-radius:2px;font:13px/1.4 Georgia,serif;letter-spacing:.035em;white-space:nowrap}
+[hidden]{display:none!important}
+</style></head>
+<body><main aria-label="The Lantern at Rook Head"><canvas id="painting" width="1920" height="1080" role="img"
+aria-label="A lantern burns above a weather-cut sea arch as a turquoise Atlantic breaker catches the last light of a storm.">This painting requires HTML5 Canvas.</canvas>
+<div id="progress" role="status">Gathering the storm light…</div></main>
+<script>
+"use strict";
+/*
+ THE LANTERN AT ROOK HEAD
+ A seeded, still seascape in Canvas 2D. Supply ?seed=... or #seed=... to vary
+ the weather, rock, surf, and wildlife. World coordinates are in metres: X is
+ right, Y is up, Z runs out to sea. All buffers are built on opening the file.
+*/
+(() => {
+const W=1920,H=1080,HX=960,HY=550,F=1280,EYE=7.3,TAU=Math.PI*2;
+const SUN={x:526,y:473,r:14.0},DARK=1e7;
+const requestedSeed=new URLSearchParams(location.search).get('seed') ??
+  new URLSearchParams(location.hash.slice(1)).get('seed') ?? 'rook-29';
+const canvas=document.getElementById('painting'),status=document.getElementById('progress');
+const ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:true});
+function surface(w=W,h=H) {
+  const el=document.createElement('canvas'); el.width=w; el.height=h;
+  return el.getContext('2d',{willReadFrequently:true});
+}
+function stringHash(s) {
+  let h=2166136261;
+  for(let i=0;i<s.length;i++) h=Math.imul(h^s.charCodeAt(i),16777619);
+  h^=h>>>16; h=Math.imul(h,0x85ebca6b); return (h^h>>>13)>>>0;
+}
+const seed=stringHash(requestedSeed);
+// Independent streams keep weather, geology, and spray reproducible.
+function stream(name) {
+  let state=(seed^stringHash(name))>>>0;
+  return function() {
+    state=(state+0x6d2b79f5)>>>0;
+    let t=Math.imul(state^(state>>>15),state|1);
+    t^=t+Math.imul(t^(t>>>7),t|61);
+    return ((t^(t>>>14))>>>0)/4294967296;
+  };
+}
+const clamp=(x,lo=0,hi=1)=>x<lo?lo:x>hi?hi:x;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a));return t*t*(3-2*t)};
+const sq=x=>x*x;
+const mix=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+const rgb=(c,a=1)=>'rgba('+Math.round(clamp(c[0],0,255))+','+Math.round(clamp(c[1],0,255))+','+Math.round(clamp(c[2],0,255))+','+a+')';
+const gauss=(r)=>Math.sqrt(-2*Math.log(.000001+.999999*r()))*Math.cos(TAU*r());
+function knots(arr,x) {
+  if(x<=arr[0][0])return arr[0][1];
+  for(let i=1;i<arr.length;i++) {
+    if(x<=arr[i][0]) {
+      const a=arr[i-1],b=arr[i],p=arr[Math.max(0,i-2)],q=arr[Math.min(arr.length-1,i+1)];
+      const t=(x-a[0])/(b[0]-a[0]),t2=t*t,t3=t2*t;
+      const m0=(b[1]-p[1])/(b[0]-p[0])*(b[0]-a[0]),m1=(q[1]-a[1])/(q[0]-a[0])*(b[0]-a[0]);
+      return (2*t3-3*t2+1)*a[1]+(t3-2*t2+t)*m0+(-2*t3+3*t2)*b[1]+(t3-t2)*m1;
+    }
+  }
+  return arr[arr.length-1][1];
+}
+const perm=new Uint16Array(512), order=Array.from({length:256},(_,i)=>i), nr=stream('permutation');
+for(let i=255;i>0;i--){let j=Math.floor(nr()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
+for(let i=0;i<512;i++)perm[i]=order[i&255];
+const gx=new Float64Array(256),gy=new Float64Array(256);
+for(let i=0;i<256;i++){let a=i*2.399963229728653;gx[i]=Math.cos(a);gy[i]=Math.sin(a);}
+function noise(x,y) {
+  const ix=Math.floor(x),iy=Math.floor(y),u=x-ix,v=y-iy;
+  const a=perm[ix&255]+(iy&255), b=perm[(ix+1)&255]+(iy&255);
+  const aa=perm[a],ab=perm[a+1],ba=perm[b],bb=perm[b+1];
+  const s=u*u*u*(u*(u*6-15)+10),t=v*v*v*(v*(v*6-15)+10);
+  const p=gx[aa]*u+gy[aa]*v, q=gx[ba]*(u-1)+gy[ba]*v;
+  const k=gx[ab]*u+gy[ab]*(v-1), l=gx[bb]*(u-1)+gy[bb]*(v-1);
+  return 1.58*lerp(lerp(p,q,s),lerp(k,l,s),t);
+}
+function fb(x,y) {
+  let a=.54,s=0;
+  for(let i=0;i<5;i++){s+=a*noise(x,y);const nx=1.84*x+.88*y+17.1;y=1.84*y-.88*x+41.7;x=nx;a*=.49;}
+  return s;
+}
+function fb3(x,y) {return .56*noise(x,y)+.285*noise(1.73*x+.99*y+7.1,1.73*y-.99*x+5.7)+.155*noise(4.1*x-1.1*y,4.1*y+1.1*x+29.2);}
+function hash2(x,y) {
+  let n=Math.imul(x^seed,0x1f1f1f1f)^Math.imul(y,0x5bd1e995);
+  n=Math.imul(n^(n>>>15),0x2c1b3c6d);return ((n^(n>>>12))>>>0)/4294967296;
+}
+function ellipse(c,x,y,rx,ry,angle,color) {
+  if(rx<=0||ry<=0)return;
+  c.fillStyle=color;c.beginPath();c.ellipse(x,y,rx,ry,angle,0,TAU);c.fill();
+}
+function line(c,x,y,xx,yy,color,w=1) {
+  c.strokeStyle=color;c.lineWidth=w;c.beginPath();c.moveTo(x,y);c.lineTo(xx,yy);c.stroke();
+}
+function glow(c,x,y,rx,ry,color,alpha) {
+  if(rx<=0||ry<=0||alpha<=0)return;
+  c.save();c.translate(x,y);c.scale(rx,ry);let g=c.createRadialGradient(0,0,0,0,0,1);
+  g.addColorStop(0,rgb(color,alpha));g.addColorStop(.28,rgb(color,alpha*.62));
+  g.addColorStop(.66,rgb(color,alpha*.17));g.addColorStop(1,rgb(color,0));
+  c.fillStyle=g;c.fillRect(-1,-1,2,2);c.restore();
+}
+async function step(message) {
+  status.textContent=message;
+  await new Promise(resolve=>setTimeout(resolve,12));
+}
+const solidZ=new Float32Array(W*H).fill(DARK),visibleZ=new Float32Array(W*H).fill(DARK);
+const skyBuffer=surface(),skySoft=surface(480,270),land=surface(),coastSoft=surface(480,270);
+const lin=new Float32Array(256),display=new Uint8Array(8193);
+for(let i=0;i<256;i++){const v=i/255;lin[i]=v<.04045?v/12.92:((v+.055)/1.055)**2.4;}
+for(let i=0;i<display.length;i++){const v=i/8192;display[i]=Math.round(255*(v<.0031308?12.92*v:1.055*v**(1/2.4)-.055));}
+const encode=v=>display[clamp(Math.round(v*8192),0,8192)];
+const project=(x,y,z)=>[HX+F*x/z,HY-F*(y-EYE)/z];
+const PI=Math.PI;
+const sinus=new Float32Array(16385);
+for(let i=0;i<sinus.length;i++)sinus[i]=Math.sin(TAU*i/16384);
+function waveSin(a){const p=a*2607.5945876176,i=Math.floor(p),k=i&16383;return lerp(sinus[k],sinus[k+1],p-i);}
+function polygon(c,points,fill,stroke,width=1){
+  c.beginPath();c.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)c.lineTo(points[i][0],points[i][1]);
+  c.closePath();c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=width;c.stroke();}
+}
+function sampleRGBA(img,sw,sh,x,y,out) {
+  x=clamp(x,0,sw-1.001);y=clamp(y,0,sh-1.001);
+  const ix=x|0,iy=y|0,tx=x-ix,ty=y-iy,k=(iy*sw+ix)*4;
+  for(let c=0;c<4;c++)out[c]=lerp(lerp(img[k+c],img[k+4+c],tx),lerp(img[k+sw*4+c],img[k+sw*4+4+c],tx),ty);
+}
+// Smooth three-dimensional value field, decorrelated at each fBm octave.
+function volumeNoise(x,y,z){
+  const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z),u=x-ix,v=y-iy,w=z-iz;
+  const U=u*u*(3-2*u),V=v*v*(3-2*v),T=w*w*(3-2*w);
+  const a=perm[ix&255]+(iy&255),b=perm[(ix+1)&255]+(iy&255);
+  const aa=perm[a]+(iz&255),ab=perm[a+1]+(iz&255),ba=perm[b]+(iz&255),bb=perm[b+1]+(iz&255);
+  return (lerp(lerp(lerp(perm[aa],perm[ba],U),lerp(perm[ab],perm[bb],U),V),
+                    lerp(lerp(perm[aa+1],perm[ba+1],U),lerp(perm[ab+1],perm[bb+1],U),V),T)-127.5)/100;
+}
+function turbulence(x,y,z){
+  const a=volumeNoise(x,y,z),b=volumeNoise(1.83*x+.75*z+17,2.04*y-.43*x+32,1.90*z-.65*x+11);
+  const c=volumeNoise(3.95*x-.85*y+7,4.2*y+.88*z,4*z+.7*x+23);
+  return .56*a+.29*b+.15*c;
+}
+function clearSky(){
+  const im=ctx.createImageData(W,H),d=im.data;
+  for(let y=0;y<H;y++){
+    const v=clamp(y/HY),high=smooth(-.04,.82,v),low=smooth(.54,1,v);
+    for(let x=0;x<W;x++){
+      const dx=x-SUN.x,dy=y-SUN.y,dist=Math.hypot(dx,dy);
+      const golden=Math.exp(-Math.abs(dx)/590),halo=Math.exp(-dist/190),aureole=Math.exp(-dist/46);
+      let rr=lerp(lerp(53,154,high),186+63*golden,low);
+      let gg=lerp(lerp(88,158,high),145+46*golden,low);
+      let bb=lerp(lerp(125,177,high),146-14*golden,low);
+      const scattered=clamp(.54*halo+.46*aureole+.10*golden*low);
+      rr=lerp(rr,255,scattered);gg=lerp(gg,217,scattered);bb=lerp(bb,145,scattered);
+      if(y<HY+2){
+        const c=fb3(x*.003+4,y*.017+3.1*noise(x*.0018,y*.003)),ice=smooth(.16,.62,c)*(.27+.20*high);
+        rr=lerp(rr,218+23*golden,ice);gg=lerp(gg,183+18*golden,ice);bb=lerp(bb,171+5*golden,ice);
+        const disc=1-smooth(SUN.r-1,SUN.r+1,dist);
+        rr=lerp(rr,255,disc);gg=lerp(gg,252,disc);bb=lerp(bb,229,disc);
+      }else{
+        const water=smooth(HY,H,y);rr=lerp(rr,30,water*.90);gg=lerp(gg,65,water*.85);bb=lerp(bb,77,water*.85);
+      }
+      const i=(y*W+x)*4,g=(hash2(x,y)-.5)*1.3;
+      d[i]=rr+g;d[i+1]=gg+g;d[i+2]=bb+g;d[i+3]=255;
+    }
+  }
+  ctx.putImageData(im,0,0);
+}
+// A density volume in a local frame of the cloud deck. Overlapping cells grow
+// into billows, then multi-scale erosion opens them to oblique sunlight.
+function stormDeck(){
+  const cell=4.7,dz=7.5,nx=Math.ceil(W/cell)+2,ny=Math.ceil((HY+40)/cell)+2,nz=33,nxy=nx*ny;
+  const base=new Float32Array(nxy*nz),density=new Float32Array(base.length),rand=stream('weather front');
+  function billow(x,y,z,rx,ry,rz,strength){
+    const ia=clamp(Math.floor(x/cell-rx/cell),0,nx-1),ib=clamp(Math.ceil((x+rx)/cell),0,nx-1);
+    const ja=clamp(Math.floor((y+25-ry)/cell),0,ny-1),jb=clamp(Math.ceil((y+25+ry)/cell),0,ny-1);
+    const ka=clamp(Math.floor((z-rz)/dz),0,nz-1),kb=clamp(Math.ceil((z+rz)/dz),0,nz-1);
+    for(let k=ka;k<=kb;k++){const sz=sq((k*dz-z)/rz);
+      for(let j=ja;j<=jb;j++){
+        const yz=sz+sq((j*cell-25-y)/ry);if(yz>1)continue;
+        let idx=k*nxy+j*nx+ia;
+        for(let i=ia;i<=ib;i++,idx++){
+          const chord=1-yz-sq((i*cell-x)/rx);if(chord<=0)continue;
+          const d=strength*Math.sqrt(chord),v=base[idx];
+          base[idx]=Math.max(v,d)+.035*Math.min(v,d);
+        }
+      }
+    }
+  }
+  const bands=[
+    [-50,86,395,126,.21,145,49],[286,45,340,110,-.17,118,40],
+    [657,12,338,94,-.08,98,34],[922,52,360,100,.18,120,38],
+    [1260,90,390,131,.12,145,49],[1636,96,456,149,-.08,127,53],[1990,155,332,157,.02,122,44],
+    [34,308,277,55,-.17,169,36],[253,278,176,37,-.22,180,23],
+    [786,294,160,36,.15,171,26],[1036,308,243,62,-.08,152,42],
+    [1265,264,223,63,-.16,164,29],[1788,365,303,49,-.09,184,36],
+    [137,451,203,25,.005,187,27],[835,459,152,21,-.04,193,25],
+    [1106,435,197,29,-.07,183,28],[1557,472,269,23,.02,186,29]
+  ];
+  for(const [cx,cy,span,rise,shear,cz,count] of bands)for(let i=0;i<count;i++){
+    const u=rand()*2-1,taper=Math.sqrt(Math.max(.04,1-u*u)),v=gauss(rand)*.53;
+    const x=cx+span*u,y=cy+span*u*shear+v*rise*taper,z=cz+gauss(rand)*23;
+    const sx=span*(.13+.35*rand())*(.73+.41*taper),
+          sy=rise*(.31+.63*rand()),sz=28+rand()*57;
+    billow(x,y,z,sx,sy,sz,.66+.44*rand());
+  }
+  const index=(i,j,k)=>(k*nxy+j*nx+i);
+  function read(a,x,y,z){
+    if(x<0||x>=nx-1||y<0||y>=ny-1||z<0||z>=nz-1)return 0;
+    const i=x|0,j=y|0,k=z|0,tx=x-i,ty=y-j,tz=z-k,p=index(i,j,k);
+    return lerp(lerp(lerp(a[p],a[p+1],tx),lerp(a[p+nx],a[p+nx+1],tx),ty),
+      lerp(lerp(a[p+nxy],a[p+nxy+1],tx),lerp(a[p+nxy+nx],a[p+nxy+nx+1],tx),ty),tz);
+  }
+  for(let k=0;k<nz;k++)for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
+    const x=i*cell,y=j*cell-25,z=k*dz;
+    const warp=turbulence(x*.0061+12,y*.0073,z*.0098+5);
+    const tx=clamp(i+4.8*warp,0,nx-1.001),ty=clamp(j+3.9*volumeNoise(x*.007+35,y*.007,z*.009),0,ny-1.001);
+    const d=read(base,tx,ty,clamp(k+warp*1.7,0,nz-1.001));if(d<.055)continue;
+    const f=turbulence(x*.021+.70*warp,y*.023,z*.025);
+    density[index(i,j,k)]=Math.max(0,d-.35+.36*warp+.47*f+.115*volumeNoise(x*.096,y*.091,z*.074));
+  }
+  const volume=new Float32Array(nxy*4);
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
+    const x=i*cell,y=j*cell-25,dx=SUN.x-x,dy=SUN.y-y,inv=1/Math.hypot(dx,dy,394);
+    const lx=dx*inv/cell,ly=dy*inv/cell,lz=394*inv/dz;
+    const warm=.36+.64*Math.exp(-Math.hypot(dx,dy)/810);
+    let trans=1,rr=0,gg=0,bb=0;
+    for(let k=0;k<nz&&trans>.012;k++){
+      const op=density[index(i,j,k)];if(op<=.004)continue;
+      let optical=0,last=0;
+      for(const distance of [7,18,35,63,103,157]){
+        optical+=read(density,i+lx*distance,j+ly*distance,k+lz*distance)*(distance-last)*.039;last=distance;
+      }
+      const direct=Math.exp(-optical),skyOpen=Math.exp(-1.65*read(density,i,j-5,k+1)-.9*read(density,i,j-14,k+3));
+      const ambient=.27+.48*skyOpen+.21*Math.exp(-op*1.6);
+      const sideD=read(density,i-4,j+2,k-2)*.72+read(density,i-10,j+4,k-4)*.78+
+        read(density,i-18,j+7,k-9)*.83;
+      const flank=Math.exp(-sideD*1.9);
+      const self=clamp(.48+1.85*(op-read(density,i-2,j+1.5,k-1.5)));
+      const radiance=clamp(.87*direct+.10*Math.exp(-optical*.39)+(.11+.25*self)*flank);
+      const remote=smooth(338,518,y)*.51;
+      const opacity=1-Math.exp(-op*dz*.046),w=opacity*trans;
+      rr+=w*lerp(lerp(lerp(23,91,ambient),222+33*warm,radiance),182+25*warm,remote);
+      gg+=w*lerp(lerp(lerp(39,99,ambient),193+24*warm,radiance),155+16*warm,remote);
+      bb+=w*lerp(lerp(lerp(65,124,ambient),176-23*warm,radiance),148+5*warm,remote);
+      trans*=1-opacity;
+    }
+    const p=(j*nx+i)*4;volume[p]=rr;volume[p+1]=gg;volume[p+2]=bb;volume[p+3]=1-trans;
+  }
+  const im=ctx.getImageData(0,0,W,HY+2),dst=im.data,sample=[0,0,0,0];
+  for(let y=0;y<HY+2;y++)for(let x=0;x<W;x++){
+    const soft=fb3(x*.043,y*.055+12),xx=(x+3.1*soft)/cell,yy=(y+25+2.9*fb3(x*.037+29,y*.053))/cell;
+    sampleRGBA(volume,nx,ny,xx,yy,sample);
+    const a=sample[3],d=(y*W+x)*4;
+    if(a>0.001){
+      const grain=soft*(1.6+7.1*(1-a))+.9*noise(x*.126,y*.18);
+      for(let c=0;c<3;c++)dst[d+c]=dst[d+c]*(1-a)+sample[c]+a*grain;
+    }
+    const dx=x-SUN.x,dy=y-SUN.y,r=Math.hypot(dx,dy),ang=Math.atan2(dy,dx);
+    const directional=clamp(.15+.70*noise(Math.cos(ang)*19+7,Math.sin(ang)*19+15)+.3*noise(29+ang*41,4.1));
+    const mist=.105*directional*Math.exp(-r/399)*smooth(3,80,r)*(1-.7*a);
+    dst[d]=lerp(dst[d],255,mist);dst[d+1]=lerp(dst[d+1],220,mist);dst[d+2]=lerp(dst[d+2],153,mist);
+    // Slanted curtains of distant rain sit under the retreating eastern cloudbank.
+    const region=Math.exp(-sq((x-1132)/392))*smooth(289,389,y)*smooth(557,488,y);
+    const rain=region*smooth(-.25,.60,fb3((x+.35*y)*.016,y*.0017+86))*.18;
+    dst[d]=lerp(dst[d],148,rain);dst[d+1]=lerp(dst[d+1],147,rain);dst[d+2]=lerp(dst[d+2],155,rain);
+  }
+  ctx.putImageData(im,0,0);
+  skyBuffer.drawImage(canvas,0,0);skySoft.drawImage(canvas,0,0,480,270);
+}
+const clifftop=[[-12,6],[-1,13],[5,16.7],[12,18.4],[17,19.2],[23,22.2],[31,24.1],[39,26.3],
+ [45,25.8],[51,25.1],[60,26.1],[67,23.8],[78,23.4],[93,25.5],[109,24]];
+function frontPlan(x){return 89-.060*x+4.5*Math.sin(x*.163+.35)+3.5*noise(x*.116+7,31.8)+1.5*noise(x*.37,12);}
+function roof(x,z){
+  const broad=knots(clifftop,x),inland=smooth(-3,16,z-frontPlan(x));
+  return broad+2.15*inland+1.03*fb3(x*.145+9,z*.13)+.72*noise(x*.054,z*.082+17);
+}
+const archDomain={x:-11,y:-4.5,z:72,ds:.49,nx:239,ny:80,nz:137};
+let faceXY,topXZ,westYZ,mouthYZ,spanYZ,archInvHeight;
+function prepareArch(){
+  const {x:x0,y:y0,z:z0,ds,nx,ny,nz}=archDomain;
+  faceXY=new Float32Array(nx*ny);topXZ=new Float32Array(nx*nz);
+  westYZ=new Float32Array(ny*nz);mouthYZ=new Float32Array(ny*nz);
+  spanYZ=new Float32Array(ny*nz);archInvHeight=new Float32Array(nz);
+  for(let i=0;i<nx;i++){const x=x0+i*ds,p=frontPlan(x);
+    for(let j=0;j<ny;j++){const y=y0+j*ds;
+      const joint=x+.12*y+1.05*noise(x*.13,y*.085+5),beds=y+.235*x+1.47*noise(x*.073,y*.073)+.52*Math.sin(.17*x);
+      const carved=2.05*Math.abs(Math.sin(joint*.45+.66*noise(x*.33,y*.13)))+
+                   1.18*Math.tanh(2.3*Math.sin(joint*.82+.17*y));
+      const shelf=.56*noise(x*.057+11,beds*.49)+.24*noise(x*.14+32,beds*1.03)+.09*noise(x*.28,beds*2.4);
+      const f=p+carved+shelf+2.35*fb3(x*.19+y*.021,y*.098)+.70*fb3(x*.45,y*.40)+1.35*Math.exp(-sq((y-1.55)/1.5));
+      faceXY[j*nx+i]=lerp(84.6+.28*x+.72*noise(x*.19,y*.13+42),f,smooth(-1.3,8.5,x));
+    }
+    for(let k=0;k<nz;k++)topXZ[k*nx+i]=roof(x,z0+k*ds);
+  }
+  for(let k=0;k<nz;k++){
+    const z=z0+k*ds,river=.57*noise(z*.18,51);archInvHeight[k]=1/(15.8+1.1*Math.sin(z*.13+.5));
+    for(let j=0;j<ny;j++){const y=y0+j*ds,idx=k*ny+j;
+      westYZ[idx]=1.95+.29*(z-91)+.108*(y-11)+1.14*fb3(z*.15,y*.15+6);
+      mouthYZ[idx]=18.6+.205*(z-90)+.107*(y-5)+.82*Math.sin(z*.15)+.44*noise(z*.28,y*.22);
+      spanYZ[idx]=8.7+river+.53*Math.sin(z*.21)+.60*Math.max(0,1-y/18);
+    }
+  }
+}
+function grid2(data,idx,stride,s,t){
+  return lerp(lerp(data[idx],data[idx+1],s),lerp(data[idx+stride],data[idx+stride+1],s),t);
+}
+function stoneDistance(x,y,z){
+  const a=archDomain,xx=clamp((x-a.x)/a.ds,0,a.nx-1.001),yy=clamp((y-a.y)/a.ds,0,a.ny-1.001),
+        zz=clamp((z-a.z)/a.ds,0,a.nz-1.001),i=xx|0,j=yy|0,k=zz|0,tx=xx-i,ty=yy-j,tz=zz-k;
+  const p=k*a.ny+j,wx=grid2(westYZ,p,a.ny,ty,tz);
+  const front=grid2(faceXY,j*a.nx+i,a.nx,tx,ty),top=grid2(topXZ,k*a.nx+i,a.nx,tx,tz);
+  const mouth=grid2(mouthYZ,p,a.ny,ty,tz),radius=grid2(spanYZ,p,a.ny,ty,tz);
+  const u=(x-mouth)/radius,v=Math.max(0,y+.83)*lerp(archInvHeight[k],archInvHeight[k+1],tz);
+  let hole=(1-Math.sqrt(u*u+v*v))*radius;
+  if(Math.abs(hole)<3.3){
+    const erode=.68*noise(x*.50+.14*z,y*.41+23)+.25*noise(x*1.12,y*.95+.19*z)+.24*Math.tanh(2.05*Math.sin(.77*y+.20*x));
+    hole+=erode*(1-smooth(2.0,3.3,Math.abs(hole)));
+  }
+  // Compose continuous faces after interpolation: a thin tunnel rim remains
+  // connected even where it is narrower than the geological sampling interval.
+  return Math.max(front-z,z-127-.13*x,y-top,wx-x,hole);
+}
+function bedrock(x,y,z,nx,ny,nz,shadow,ao,close,col){
+  const drift=fb3(x*.115+.029*z,y*.18+.073*z),grit=fb3(x*1.37+z*.60,y*2.16+z*.24);
+  const chip=noise(x*6.2+z*2.98,y*6.7+z*2.1);
+  const strata=y+.221*x-.059*z+1.03*drift;
+  const seams=Math.sin(strata*3.1+.51*noise(x*.61+z*.30,y*.48));
+  const band=smooth(-.71,-.96,seams)*smooth(-.38,.22,grit+drift*.61);
+  const layers=.5+.5*Math.sin(strata*.99+.64*drift);
+  const joints=1-smooth(.010,.095,Math.abs(Math.sin(.91*x+.43*z+.12*y+1.32*drift+.18*grit)));
+  const fracture=fb3(x*.65+z*.26,y*1.11+z*.39);
+  nx+=.30*fracture+.090*grit;ny+=.22*grit+.11*chip;
+  const nInv=1/Math.hypot(nx,ny,nz);nx*=nInv;ny*=nInv;nz*=nInv;
+  const slope=clamp(-nx*.72+ny*.41+nz*.28);
+  const western=clamp(-.87*nx+.27*ny-.19*nz);
+  const sun=clamp(clamp(-nx*.68+ny*.31+nz*.59)*shadow+.36*Math.max(0,-nx*.83+ny*.17-.08));
+  const wet=clamp((1-smooth(1.15+drift,4.7+drift*2,y))*(.76+.22*grit));
+  const topGrass=smooth(.48,.79,ny+.23*grit+.13*drift)*smooth(10,16,y);
+  const l=clamp(.15+.42*slope+.20*western+.16*ny+.23*drift+.20*grit+.082*chip-.10*band-.14*joints);
+  let rr=lerp(36,168,l)+18*layers+sun*62,gg=lerp(45,141,l)+9*layers+sun*38,bb=lerp(55,119,l)+4*layers+sun*18;
+  const damp=clamp(.43+.43*ny+.14*drift);
+  rr=lerp(rr,rr*.55+12*damp,wet);gg=lerp(gg,gg*.63+15*damp,wet);bb=lerp(bb,bb*.73+18*damp,wet);
+  const grass=clamp(.21+.36*western+.26*grit+.22*drift+.12*chip+.17*sun);
+  rr=lerp(rr,lerp(55,165,grass),topGrass);gg=lerp(gg,lerp(66,145,grass),topGrass);
+  bb=lerp(bb,lerp(46,78,grass),topGrass);
+  const lichen=smooth(.34,.65,grit+.30*chip)*smooth(1.1,3.6,y)*(1-wet)*(.20+.15*ny);
+  rr=lerp(rr,174,lichen);gg=lerp(gg,162,lichen);bb=lerp(bb,112,lichen);
+  const rim=clamp((.29+.75*ny+.14*grit)*(.45+.55*western))**5*wet;
+  rr=(rr+47*rim)*ao;gg=(gg+36*rim)*ao;bb=(bb+21*rim)*ao;
+  const air=close?.023:.084+.037*smooth(77,133,z);
+  col[0]=lerp(rr,161,air);col[1]=lerp(gg,156,air);col[2]=lerp(bb,155,air);
+}
+function renderArch(){
+  prepareArch();
+  const im=land.getImageData(0,0,W,H),d=im.data,col=[0,0,0];
+  const left=Math.max(0,HX-200),e=.24;
+  for(let sx=left;sx<W;sx++){const ax=(sx+.5-HX)/F;
+    for(let sy=174;sy<742;sy++){
+      const ay=(HY-sy-.5)/F;
+      let t=72.2,exit=137.7;
+      if(ay>0)exit=Math.min(exit,(34.1-EYE)/ay);
+      if(ay<0)exit=Math.min(exit,(-4.35-EYE)/ay);
+      if(ax<0)exit=Math.min(exit,-10.7/ax);
+      let last=t,hit=false;
+      for(let iter=0;iter<670&&t<exit;iter++){
+        const dist=stoneDistance(ax*t,EYE+ay*t,t);
+        if(dist<.041){hit=true;break;}
+        last=t;t+=clamp(dist*.47,.092,4.2);
+      }
+      if(!hit)continue;
+      for(let k=0;k<3;k++){
+        const mid=(last+t)*.5;if(stoneDistance(ax*mid,EYE+ay*mid,mid)<.037)t=mid;else last=mid;
+      }
+      const x=ax*t,y=EYE+ay*t,z=t;
+      let nx=stoneDistance(x+e,y,z)-stoneDistance(x-e,y,z),
+          ny=stoneDistance(x,y+e,z)-stoneDistance(x,y-e,z),
+          nz=stoneDistance(x,y,z+e)-stoneDistance(x,y,z-e);
+      const inv=1/(Math.hypot(nx,ny,nz)||1);nx*=inv;ny*=inv;nz*=inv;
+      let occ=0,occlusion=0;
+      for(const g of [.65,1.8,4.4,9.1,17]){
+        const s=stoneDistance(x-.61*g,y+.37*g,z+.70*g);
+        occ=Math.max(occ,smooth(-.22,.30,-s/g));
+        occlusion+=clamp(1-stoneDistance(x+nx*g*.66,y+(.50+ny*.66)*g,z+nz*g*.66)/(g*.80))*.057;
+      }
+      const under=1-smooth(-.65,.16,ny),inner=smooth(91,108,z)*(1-smooth(27,35,x));
+      const ao=clamp(1-occlusion-under*.20-inner*.13,.48,1);
+      bedrock(x,y,z,nx,ny,nz,1-.84*occ,ao,false,col);
+      const idx=sy*W+sx,p=idx*4;
+      d[p]=col[0];d[p+1]=col[1];d[p+2]=col[2];d[p+3]=255;solidZ[idx]=z;
+    }
+  }
+  land.putImageData(im,0,0);
+}
+function distantLand(points,z,color,roughness,tag){
+  const im=land.getImageData(0,0,W,HY+100),d=im.data;
+  const bottom=HY+F*EYE/z,lo=Math.max(0,Math.floor(points[0][0])),hi=Math.min(W-1,Math.ceil(points.at(-1)[0]));
+  for(let x=lo;x<=hi;x++){
+    const taper=smooth(0,8,x-lo)*smooth(hi,hi-8,x);
+    const crest=Math.min(bottom+.75,knots(points,x)+roughness*taper*(fb3(x*.024,tag)*1.9+.22*noise(x*.23,tag+9)));
+    for(let y=Math.max(0,Math.floor(crest));y<Math.min(bottom+F*2.8/z,HY+100);y++){
+      const k=(y*W+x)*4,AA=clamp(y+1-crest);
+      const down=y-crest,fold=fb3(x*.038+down*.012,y*.016+tag),n=fb3(x*.19+down*.045,y*.12);
+      const ledge=.5+.5*Math.cos(1.05*y+x*.078+.82*fold),haze=Math.exp(-Math.abs(x-SUN.x)/560);
+      const value=9*fold+4*n+ledge*3+1.0*Math.exp(-down/10);
+      d[k]=color[0]+value+15*haze;d[k+1]=color[1]+.8*value+8*haze;d[k+2]=color[2]+.68*value;
+      d[k+3]=255*AA;if(AA>.34)solidZ[y*W+x]=z;
+    }
+  }
+  land.putImageData(im,0,0);
+}
+function headlands(){
+  distantLand([[-60,448],[55,466],[121,459],[179,482],[230,483],[293,513],[367,524],[397,548],[468,554]],760,[133,140,151],5.8,12);
+  distantLand([[-32,450],[69,443],[119,457],[145,461],[162,486],[186,487],[215,508],[231,514],[253,544],[308,562]],438,[106,118,131],4.7,34);
+  distantLand([[644,564],[658,551],[685,548],[712,544],[726,535],[752,536],[778,544],[816,553],[835,563]],930,[156,149,148],2.9,16);
+  distantLand([[766,585],[777,566],[793,551],[800,526],[813,518],[821,535],[833,551],[841,569],[862,586]],274,[102,111,123],3.0,25);
+  distantLand([[834,596],[852,568],[860,551],[867,521],[874,507],[883,471],[890,464],[896,477],[903,480],[912,517],[923,526],[934,558],[950,568],[960,596]],228,[88,98,113],4.7,19);
+}
+// Tide-worn blocks are convex intersections of an ellipsoid and chipped planes.
+// Each camera ray is clipped analytically, retaining the normal of its first face.
+const reefs=[];
+function renderBlock(im,s,r){
+  const [cx,cy,cz,rx,ry,rz,theta]=s,c=Math.cos(theta),si=Math.sin(theta),cuts=[];
+  for(let j=0;j<12;j++){
+    const a=(j+.8*r())*TAU/12,up=-.12+.99*r(),g=Math.sqrt(1-up*up);
+    cuts.push([Math.cos(a)*g,up,Math.sin(a)*g,.66+.28*r()]);
+  }
+  cuts.push([-.11,.988,.091,.64+.16*r()]);
+  const center=project(cx,cy,cz),R=Math.max(rx,rz),bound=F*(rx+rz)/Math.max(3,cz-R),
+        by=F*(ry+Math.abs(cy-EYE)*R/Math.max(4,cz-R))/(cz-R);
+  const xlo=clamp(Math.floor(center[0]-bound),0,W),xhi=clamp(Math.ceil(center[0]+bound),0,W);
+  const ylo=clamp(Math.floor(center[1]-by-4),0,H),yhi=clamp(Math.ceil(center[1]+by+4),0,H);
+  const ox=(-cx*c-cz*si)/rx,oz=(cx*si-cz*c)/rz,oy=(EYE-cy)/ry,C=ox*ox+oz*oz+oy*oy-1,col=[0,0,0];
+  for(let x=xlo;x<xhi;x++){
+    const ax=(x+.5-HX)/F,dx=(ax*c+si)/rx,dz=(-ax*si+c)/rz;
+    for(let y=ylo;y<yhi;y++){
+      const ay=(HY-y-.5)/F,dy=ay/ry,A=dx*dx+dy*dy+dz*dz,B=dx*ox+dy*oy+dz*oz,disc=B*B-A*C;if(disc<0)continue;
+      const rt=Math.sqrt(disc);let near=(-B-rt)/A,far=(-B+rt)/A,face=-1;
+      const idx=y*W+x;if(near>solidZ[idx])continue;
+      for(let n=0;n<cuts.length&&near<=far;n++){
+        const p=cuts[n],dv=dx*p[0]+dy*p[1]+dz*p[2],gap=p[3]-ox*p[0]-oy*p[1]-oz*p[2];
+        if(Math.abs(dv)<1e-7){if(gap<0)far=-1;continue;}
+        const t=gap/dv;
+        if(dv<0&&t>near){near=t;face=n;}else if(dv>0)far=Math.min(far,t);
+      }
+      if(near>far||near<=0||near>=solidZ[idx])continue;
+      const X=ax*near,Y=EYE+ay*near,Z=near;
+      let nnx=ox+dx*near,nny=oy+dy*near,nnz=oz+dz*near;
+      if(face>=0){const f=cuts[face],bevel=smooth(0,.064,1-Math.hypot(nnx,nny,nnz));
+        nnx=lerp(nnx,f[0],bevel);nny=lerp(nny,f[1],bevel);nnz=lerp(nnz,f[2],bevel);}
+      let nx=c*nnx/rx-si*nnz/rz,ny=nny/ry,nz=si*nnx/rx+c*nnz/rz;
+      const inv=1/(Math.hypot(nx,ny,nz)||1);nx*=inv;ny*=inv;nz*=inv;
+      const rough=fb3(X*.87,Y*1.4+Z*.71);
+      bedrock(X,Y,Z,nx,ny,nz,clamp(.72+.21*ny),.89+.10*ny,true,col);
+      // Wet laminations and salt rinds follow the same tilted bedding plane.
+      const seam=1-smooth(.016,.112,Math.abs(Math.sin((Y+.18*X-.065*Z+rough*.067)*14.3)));
+      const salt=smooth(.42,.72,fb3(X*9.4+Z*2.5,Z*7.7+Y*.9)+rough*.29)*smooth(-.1,1.6,Y);
+      const k=idx*4;
+      im.data[k]=col[0]*(.97-.18*seam)+salt*31;im.data[k+1]=col[1]*(.98-.16*seam)+salt*31;
+      im.data[k+2]=col[2]*(.99-.13*seam)+salt*26;im.data[k+3]=255;solidZ[idx]=near;
+    }
+  }
+}
+function rockCoast(){
+  renderArch();
+  const r=stream('broken reefs'),im=land.getImageData(0,0,W,H);
+  const shapes=[
+    [3.1,-.15,88,3.6,3.7,3.6,.53],[6.3,-.23,83,4.2,2.65,3.10,-.42],
+    [8.8,-.35,82,2.8,2.4,2.45,.74],[29.5,-.68,83,3.9,3.95,4.2,.65],
+    [34.6,-.2,79,5.1,3.1,5.7,.33],[40.3,-.36,75,6.2,3.2,3.95,.61],
+    [49.1,-.5,68,5.2,2.2,4.1,-.37],[24.5,-.68,59,2.2,2.21,3.2,.37],
+    [15.1,-.34,50,3.1,1.94,2.9,.82],[17.6,-.46,49,2.0,1.65,2.2,.61],
+    [12.2,-.36,18.3,3.4,2.40,3.2,.53],[14.4,.02,17.4,3.1,2.65,2.89,.24],
+    [10.3,-.50,16.1,2.2,1.69,1.87,.53],[9.52,-.72,15.0,1.46,1.23,1.90,-.7],
+    [11.13,-.53,12.43,2.45,1.35,2.42,-.35],[-13.8,-.53,15.6,2.22,2.25,1.9,-.60]
+  ];
+  for(const s of shapes){
+    reefs.push(s);if(s[2]<25&&s[0]>0)continue;renderBlock(im,s,r);
+    if(s[2]<45||s[2]>74)for(let j=0;j<3;j++){
+      const [x,y,z,rx,ry,rz]=s,sm=.13+r()*.32;
+      const q=[x+(r()-.5)*rx*2,y-ry*.17,z+(r()-.5)*rz*1.9,rx*sm,ry*(.17+.47*r()),rz*sm,r()*3.0];
+      reefs.push(q);renderBlock(im,q,r);
+    }
+  }
+  land.putImageData(im,0,0);ctx.drawImage(land.canvas,0,0);
+}
+// Silt, kelp and rainwater occupy a near sandstone platform. Its upper surface
+// is intersected separately from the sea, including the horizontal water level
+// inside a hollow weathered into one of the slabs.
+const tidalSlabs=[
+  [12.6,18.8,3.6,3.05,1.81,.31],[16.0,19.7,4.5,3.60,2.14,.14],[11.45,15.3,3.0,2.93,1.58,.60],
+  [14.4,14.4,4.1,3.6,1.89,-.29],[9.56,12.8,2.72,2.09,1.21,.38],[12.7,11.2,4.2,3.1,1.64,-.31],
+  [19.1,22.7,3.3,2.2,2.0,.28],[10.35,18.0,1.67,1.19,.81,-.41]
+].map(([x,z,rx,rz,h,a])=>({x,z,rx,rz,h,c:Math.cos(a),s:Math.sin(a)}));
+const shelfGrid={x:4.0,z:7,ds:.060,w:334,h:343},shelfHeights=new Float32Array(shelfGrid.w*shelfGrid.h);
+const poolLevel=1.22;
+function hollow(x,z){
+  const u=(x-12.62)+.28*(z-18.45),v=(z-18.45)-.28*(x-12.62);
+  return 1-Math.hypot(u/1.47,v/.81)+.17*noise(x*1.9,z*1.86)+.064*noise(x*6.1,z*5.2);
+}
+function prepareShelf(){
+  const g=shelfGrid;
+  for(let j=0;j<g.h;j++)for(let i=0;i<g.w;i++){
+    const x=g.x+i*g.ds,z=g.z+j*g.ds,n=fb3(x*1.23+65,z*1.37);
+    let h=-4.65;
+    for(const b of tidalSlabs){
+      const xx=x-b.x,zz=z-b.z,u=(xx*b.c+zz*b.s)/b.rx,v=(-xx*b.s+zz*b.c)/b.rz;
+      const edge=1-Math.pow(Math.pow(Math.abs(u),3)+Math.pow(Math.abs(v),3),1/3)+.073*n+.036*noise(x*4.45,z*4.13);
+      const candidate=b.h+.08*xx-.059*zz+.145*n-3.60*smooth(.24,-.18,edge);
+      h=Math.max(h,candidate);
+    }
+    const joints=Math.abs(Math.sin(2.36*x+1.75*z+.47*fb3(x*.98,z*.98)));
+    h-=.125*(1-smooth(.018,.17,joints))+.067*fb3(x*3.0,z*2.49);
+    const bowl=hollow(x,z);
+    h-=.95*smooth(-.20,.42,bowl);
+    shelfHeights[j*g.w+i]=h;
+  }
+}
+function shelfHeight(x,z){
+  const g=shelfGrid,xx=(x-g.x)/g.ds,zz=(z-g.z)/g.ds;
+  if(xx<0||xx>=g.w-1||zz<0||zz>=g.h-1)return -4.65;
+  const i=xx|0,j=zz|0;return grid2(shelfHeights,j*g.w+i,g.w,xx-i,zz-j);
+}
+function barnacle(x,z,up,col,wet){
+  const u=x*16.8+z*3.6,v=z*16.3-x*2.0,ix=Math.floor(u),iz=Math.floor(v),id=hash2(ix+441,iz+91);
+  const a=u-ix-(.27+.45*hash2(ix,iz+61)),b=v-iz-(.27+.45*hash2(ix-32,iz));
+  const rad=(.125+.28*id),d=Math.hypot(a,b*.87)/rad;
+  if(d>=1)return;
+  const colony=fb3(x*1.15+14,z*1.42);
+  if(id>.62+colony*.97||colony<-.30)return;
+  const rim=1-smooth(.77,1,d),hole=1-smooth(.14,.48,Math.hypot((a-.06)/rad,(b+.038)/rad));
+  const plates=.5+.5*Math.sin(5*Math.atan2(b,a)+id*6);
+  const l=clamp(.43-.6*a/rad+.19*up+.13*plates);
+  const cold=[91,108,107],chalk=[205,202,172];
+  for(let c=0;c<3;c++)col[c]=lerp(col[c],lerp(lerp(cold[c],chalk[c],l),[52,62,59][c],hole),rim*(.69+.24*wet));
+}
+function intertidal(){
+  prepareShelf();
+  const img=land.getImageData(0,0,W,H),d=img.data,out=[0,0,0];
+  const zShelf=new Float32Array(W*H);
+  for(let x=1290;x<W;x++){
+    const ax=(x+.5-HX)/F;let previousY=3000,previousZ=7,previousPool=false;
+    for(let z=7.05;z<27.45;z+=.026){
+      const wx=ax*z,ground=shelfHeight(wx,z);
+      const isPool=ground<poolLevel&&wx>10.7&&wx<14.6&&z>16.85&&z<20.05&&hollow(wx,z)>-.045;
+      const height=isPool?poolLevel:ground,y=HY+(EYE-height)*F/z;
+      const lo=Math.max(0,Math.ceil(Math.min(previousY,y)-.5)),hi=Math.min(H-1,Math.floor(Math.max(previousY,y)-.5));
+      for(let screenY=lo;screenY<=hi;screenY++){
+        const t=clamp((screenY+.5-previousY)/(y-previousY||.0001)),dist=lerp(previousZ,z,t),k=screenY*W+x;
+        if(dist>=solidZ[k])continue;
+        const Y=EYE+(HY-screenY-.5)*dist/F;if(Y<-.85)continue;
+        solidZ[k]=dist;zShelf[k]=(t>.5?isPool:previousPool)?-dist:dist;
+      }
+      previousY=y;previousZ=z;previousPool=isPool;
+    }
+  }
+  for(let y=785;y<H;y++)for(let x=1290;x<W;x++){
+    const i=y*W+x,v=zShelf[i];if(v===0)continue;
+    const z=Math.abs(v),X=(x+.5-HX)*z/F,Y=EYE+(HY-y-.5)*z/F;
+    const dx=(shelfHeight(X+.042,z)-shelfHeight(X-.042,z))/.084,dz=(shelfHeight(X,z+.042)-shelfHeight(X,z-.042))/.084;
+    const inv=1/Math.hypot(dx,1,dz),nx=-dx*inv,ny=inv,nz=-dz*inv;
+    const n=fb3(X*2.3+13,z*2.25),sand=fb3(X*14.6+Y*2.8,z*15.7),pore=noise(X*47.5+z*.91,z*41.3+Y*5.3);
+    bedrock(X,Y,z,nx,ny,nz,.64+.25*ny,.90,true,out);
+    const wet=clamp(.66+.49*n+.19*sand+.10*nz),mineral=smooth(.28,.71,sand+.51*pore+.17*n);
+    const layered=.5+.5*Math.sin(17*(Y+.22*X-.061*z)+.70*n+.41*sand);
+    const vein=(1-smooth(.022,.13,Math.abs(noise(X*2.0+z*.59,Y*1.89+z*2.3)+.22*sand)))*
+      smooth(-.2,.51,n+.30*sand);
+    for(let ch=0;ch<3;ch++)out[ch]=(out[ch]*(.81+.13*layered)+[24,23,21][ch]*mineral+
+      vein*[43,40,31][ch]+sand*19+pore*7)*(.85+.15*(1-wet));
+    const slick=clamp((.31+.62*ny+.15*nz+.09*sand)*wet);
+    out[0]=lerp(out[0],116+35*n, slick*.29);out[1]=lerp(out[1],123+22*n,slick*.30);out[2]=lerp(out[2],129+13*n,slick*.33);
+    const algae=smooth(-.06,.47,fb3(X*2.12+71,z*1.91)+.32*sand+.24*wet)*smooth(1.72,.45,Y)*.79;
+    out[0]=lerp(out[0],62+28*n,algae);out[1]=lerp(out[1],75+32*n,algae);out[2]=lerp(out[2],51+18*n,algae);
+    if(v<0){
+      const depth=Math.max(0,poolLevel-shelfHeight(X,z)),edge=1-smooth(.00,.12,depth);
+      const fluid=clamp(.30+.55*depth+.12*noise(X*4.3,z*4.2));
+      out[0]=lerp(out[0],119+21*n,fluid)+17*edge;out[1]=lerp(out[1],148+15*n,fluid)+15*edge;out[2]=lerp(out[2],153+10*n,fluid)+10*edge;
+    }else barnacle(X,z,ny,out,wet);
+    const k=i*4;d[k]=out[0];d[k+1]=out[1];d[k+2]=out[2];d[k+3]=255;
+  }
+  land.putImageData(img,0,0);
+}
+const station={x:40.4,z:98.6,h:0,lx:0,ly:0};
+let architecture;
+function inkAt(k,col,a){
+  const d=architecture.data,old=d[k+3]/255,sum=a+old*(1-a),t=sum? a/sum:0;
+  for(let c=0;c<3;c++)d[k+c]=lerp(d[k+c],col[c],t);
+  d[k+3]=sum*255;
+}
+function stroke3(p,q,col,w=.8) {
+  const a=project(...p),b=project(...q),dx=b[0]-a[0],dy=b[1]-a[1],len=dx*dx+dy*dy;
+  const minX=clamp(Math.floor(Math.min(a[0],b[0])-w-1),0,W),maxX=clamp(Math.ceil(Math.max(a[0],b[0])+w+1),0,W);
+  const minY=clamp(Math.floor(Math.min(a[1],b[1])-w-1),0,H),maxY=clamp(Math.ceil(Math.max(a[1],b[1])+w+1),0,H);
+  for(let y=minY;y<maxY;y++)for(let x=minX;x<maxX;x++){
+    const t=len?clamp(((x+.5-a[0])*dx+(y+.5-a[1])*dy)/len):0,dd=Math.hypot(x+.5-a[0]-dx*t,y+.5-a[1]-dy*t);
+    const alpha=clamp(w*.5+.5-dd);if(!alpha)continue;
+    const z=1/lerp(1/p[2],1/q[2],t),i=y*W+x;if(z>solidZ[i]+.055)continue;
+    inkAt(i*4,col,alpha);if(alpha>.47)solidZ[i]=Math.min(solidZ[i],z);
+  }
+}
+function face(a,b,c,shader){
+  const A=project(...a),B=project(...b),C=project(...c);
+  const det=(B[1]-C[1])*(A[0]-C[0])+(C[0]-B[0])*(A[1]-C[1]);if(Math.abs(det)<1e-7)return;
+  const ax=b[0]-a[0],ay=b[1]-a[1],az=b[2]-a[2],bx=c[0]-a[0],by=c[1]-a[1],bz=c[2]-a[2];
+  let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx,inv=1/(Math.hypot(nx,ny,nz)||1);
+  nx*=inv;ny*=inv;nz*=inv;
+  if(nx*a[0]+ny*(a[1]-EYE)+nz*a[2]>0){nx=-nx;ny=-ny;nz=-nz;}
+  const x0=clamp(Math.floor(Math.min(A[0],B[0],C[0])),0,W),x1=clamp(Math.ceil(Math.max(A[0],B[0],C[0])),0,W);
+  const y0=clamp(Math.floor(Math.min(A[1],B[1],C[1])),0,H),y1=clamp(Math.ceil(Math.max(A[1],B[1],C[1])),0,H);
+  const out=[0,0,0];
+  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+    const u=((B[1]-C[1])*(x+.5-C[0])+(C[0]-B[0])*(y+.5-C[1]))/det;
+    const v=((C[1]-A[1])*(x+.5-C[0])+(A[0]-C[0])*(y+.5-C[1]))/det,t=1-u-v;
+    if(u<-.0001||v<-.0001||t<-.0001)continue;
+    const depth=1/(u/a[2]+v/b[2]+t/c[2]),i=y*W+x;if(depth>solidZ[i]+.002)continue;
+    shader((x+.5-HX)*depth/F,EYE+(HY-y-.5)*depth/F,depth,nx,ny,nz,out);
+    inkAt(i*4,out,1);solidZ[i]=depth;
+  }
+}
+function quad(a,b,c,d,shader){face(a,b,c,shader);face(a,c,d,shader);}
+function material(shadow,light,texture=.02) {
+  return (x,y,z,nx,ny,nz,col)=>{
+    const lit=clamp(.26+.66*(-.83*nx+.44*ny-.26*nz)+texture*fb3(x*3+z*.6,y*5));
+    for(let i=0;i<3;i++)col[i]=lerp(shadow[i],light[i],lit);
+  };
+}
+function rotateBody(cx,cz,levels,n,shader){
+  for(let k=1;k<levels.length;k++)for(let j=0;j<n;j++){
+    const a=j*TAU/n,b=(j+1)*TAU/n,[h1,r1]=levels[k-1],[h2,r2]=levels[k];
+    const pt=(h,r,t)=>[cx+r*Math.cos(t),h,cz+r*Math.sin(t)];
+    quad(pt(h1,r1,a),pt(h1,r1,b),pt(h2,r2,b),pt(h2,r2,a),shader);
+  }
+}
+function cottage(x,y,z,scale,r){
+  const sx=3.20*scale,sz=1.76*scale,height=2.95*scale,ridge=1.53*scale,angle=.32,c=Math.cos(angle),s=Math.sin(angle);
+  const p=(xx,yy,zz)=>[x+c*xx+s*zz,y+yy,z-s*xx+c*zz];
+  const stucco=material([80,91,101],[199,185,153],.14),slate=material([57,64,72],[148,123,102],.15);
+  quad(p(-sx,0,-sz),p(sx,0,-sz),p(sx,height,-sz),p(-sx,height,-sz),stucco);
+  quad(p(-sx,0,sz),p(-sx,0,-sz),p(-sx,height,-sz),p(-sx,height,sz),stucco);
+  quad(p(sx,0,sz),p(sx,0,-sz),p(sx,height,-sz),p(sx,height,sz),stucco);
+  face(p(-sx,height,sz),p(-sx,height,-sz),p(-sx,height+ridge,0),stucco);
+  face(p(sx,height,sz),p(sx,height,-sz),p(sx,height+ridge,0),stucco);
+  for(const side of [-1,1]){
+    const a=sx+.20*scale,b=sz+.23*scale;
+    quad(p(-a,height-.06,b*side),p(a,height-.06,b*side),p(a,height+ridge,0),p(-a,height+ridge,0),slate);
+    for(let j=1;j<8;j++){const t=j/8;stroke3(p(-a,height+ridge*(1-t)+.015,b*side*t),p(a,height+ridge*(1-t)+.015,b*side*t),[99,89,78],.52);}
+  }
+  const glass=material([62,75,79],[194,167,117],.05),door=material([53,68,69],[93,98,83],.10);
+  quad(p(-.44*scale,.01,-sz-.02),p(.43*scale,.01,-sz-.02),p(.43*scale,1.96*scale,-sz-.02),p(-.44*scale,1.96*scale,-sz-.02),door);
+  for(const px of [-1.72,1.76]){
+    const x0=(px-.39)*scale,x1=(px+.39)*scale,h0=.95*scale,h1=2.01*scale;
+    quad(p(x0,h0,-sz-.04),p(x1,h0,-sz-.04),p(x1,h1,-sz-.04),p(x0,h1,-sz-.04),glass);
+    stroke3(p(px*scale,h0,-sz-.06),p(px*scale,h1,-sz-.06),[195,192,170],.75);
+    stroke3(p(x0-.10,h0,-sz-.065),p(x1+.1,h0,-sz-.065),[160,155,133],1.1);
+  }
+  const cp=p(sx*.63,height+ridge-.13,0);
+  rotateBody(cp[0],cp[2],[[cp[1]-.48,.38*scale],[cp[1]+1.02*scale,.32*scale],[cp[1]+1.13*scale,.38*scale]],4,material([76,70,66],[156,125,93],.14));
+}
+function beaconGlow(){
+  const {lx,ly}=station,layer=surface(),height=96,y0=Math.max(0,Math.floor(ly-48)),im=layer.createImageData(W,height),d=im.data;
+  for(let x=Math.max(0,Math.round(lx-650));x<lx;x++){
+    const dx=lx-x,center=ly+.039*dx,width=1.2+.035*dx;
+    for(let y=y0;y<y0+height;y++){
+      const q=(y-center)/width,a=Math.exp(-sq(q*1.48))*Math.exp(-dx/234)*smooth(650,460,dx)*
+        (.62+.37*fb3(x*.012,y*.031))*.35;
+      const k=((y-y0)*W+x)*4;d[k]=255;d[k+1]=224;d[k+2]=157;d[k+3]=255*a;
+    }
+  }
+  layer.putImageData(im,0,y0);
+  glow(layer,lx,ly,43,35,[255,196,101],.27);glow(layer,lx,ly,14,12,[255,222,139],.72);
+  ellipse(layer,lx,ly,2.3,2.7,0,'#fff8d5');
+  ctx.drawImage(layer.canvas,0,0);
+}
+function keeperStation(){
+  architecture=land.getImageData(0,0,W,H);
+  const {x,z}=station,h=station.h=roof(x,z)-.22,r=stream('keeper garden');
+  const ivory=[226,212,176],blue=[97,112,126],rust=[169,72,49],darkRust=[85,51,55];
+  const iron=material([31,43,52],[112,108,95],.08),stone=material([65,74,78],[174,155,117],.22);
+  // Grass stems follow visible points of the actual cliff top.
+  for(let j=0;j<13500;j++){
+    const xx=-2+r()*86,zz=86+36*r(),yy=roof(xx,zz),P=project(xx,yy,zz);
+    const sx=P[0]|0,sy=P[1]|0;if(sx<0||sx>=W||sy<0||sy>=H)continue;
+    if(zz<frontPlan(xx)+3||zz>solidZ[sy*W+sx]+1.1||stoneDistance(xx,yy-.19,zz)>.025)continue;
+    if(solidZ[Math.min(H-1,sy+2)*W+sx]>zz+3.8)continue;
+    const growth=.035+.19*r(),color=mix([66,77,48],[184,158,91],.18+.65*r());
+    stroke3([xx,yy-.08,zz],[xx+growth*.58,yy+growth,zz-.012],color,.43+.3*r());
+  }
+  cottage(46.9,roof(46.9,99.1)-.14,99.1,.97,r);
+  cottage(52.6,roof(52.6,101.4)-.18,101.4,.60,r);
+  for(let i=0;i<24;i++){
+    const xx=32.6+i*.86,zz=96.5+Math.sin(i*.19)*.45,a=[xx,roof(xx,zz),zz];
+    stroke3(a,[xx,a[1]+.76,zz],[72,76,66],.85);
+    if(i!==23){const bx=xx+.86,bz=96.5+Math.sin((i+1)*.19)*.45;
+      stroke3([xx,a[1]+.50,zz],[bx,roof(bx,bz)+.50,bz],[102,99,77],.6);}
+  }
+  rotateBody(x,z,[[h-.40,2.31],[h+.32,2.31],[h+.49,2.08]],48,stone);
+  const tower=(xx,yy,zz,nx,ny,nz,out)=>{
+    const height=yy-h,angle=Math.atan2(zz-z,xx-x),circ=(angle+PI)*1.9;
+    const rad=Math.hypot(xx-x,zz-z),left=-(xx-x)/rad;
+    const variation=fb3(circ*3.7,yy*2.1),run=fb3(circ*12.2,yy*.48+47);
+    const row=Math.floor(height/.32),mortar=1-smooth(.0,.09,Math.min((height/.32)%1,1-(height/.32)%1));
+    const joint=1-smooth(0,.076,Math.abs(Math.sin(circ*3.75+(row%2)*1.5)));
+    const light=clamp(.44+.45*left+.10*variation+.08*run-.04*mortar-.025*joint);
+    const belt=height>6.20&&height<8.19;
+    for(let i=0;i<3;i++)out[i]=lerp(belt?darkRust[i]:blue[i],belt?rust[i]:ivory[i],light);
+  };
+  rotateBody(x,z,[[h+.32,2.07],[h+1.1,2.02],[h+5.2,1.65],[h+9.55,1.41],[h+9.82,1.51]],64,tower);
+  // Tall recessed windows wind around the masonry as the staircase rises.
+  for(const [yy,a] of [[2.1,-1.95],[5.0,-1.13],[8.4,-1.78]]){
+    const radius=2.09-yy*.071,pt=(t,k)=>[x+(radius+.038)*Math.cos(a+t),h+yy+k,z+(radius+.038)*Math.sin(a+t)];
+    quad(pt(-.14,0),pt(.14,0),pt(.14,.79),pt(-.14,.79),material([35,47,56],[78,97,104]));
+    stroke3(pt(-.17,-.055),pt(.17,-.055),[210,194,156],1);
+    stroke3(pt(0,.06),pt(0,.76),[129,139,137],.54);
+  }
+  rotateBody(x,z,[[h+9.6,1.49],[h+9.87,1.69],[h+10.16,2.03],[h+10.32,2.01],[h+10.33,0]],54,iron);
+  const lp=h+11.65,lamp=project(x,lp,z);station.lx=lamp[0];station.ly=lamp[1];
+  rotateBody(x,z,[[h+10.29,1.29],[h+10.78,1.26]],12,iron);
+  const glass=(xx,yy,zz,nx,ny,nz,out)=>{
+    const dx=(xx-x)/1.23,band=.5+.5*Math.cos((yy-lp)*38);
+    const a=clamp(.17+.79*Math.exp(-dx*dx*3.6-sq((yy-lp)/.78))+.080*band+.07*nx);
+    const dark=[87,97,93],lit=[255,234,165];for(let i=0;i<3;i++)out[i]=lerp(dark[i],lit[i],a);
+  };
+  rotateBody(x,z,[[h+10.77,1.23],[h+12.47,1.23]],12,glass);
+  for(let j=0;j<16;j++){const a=j*TAU/16,b=(j+1)*TAU/16;
+    const p=(t,rr,yy)=>[x+rr*Math.cos(t),h+yy,z+rr*Math.sin(t)];
+    stroke3(p(a,1.9,10.3),p(a,1.9,11.08),[48,56,58],.82);
+    for(const hh of [10.61,11.07])stroke3(p(a,1.9,hh),p(b,1.9,hh),[59,64,65],.79);
+    if(j%2===0)stroke3(p(a,1.24,10.74),p(a,1.24,12.48),[49,56,57],1.13);
+  }
+  rotateBody(x,z,[[h+12.45,1.38],[h+12.56,1.47],[h+13.01,.85],[h+13.43,.18],[h+13.52,.09]],24,
+    material([52,57,63],[145,109,82],.12));
+  stroke3([x,h+13.4,z],[x,h+14.02,z],[71,73,68],1.08);
+  wrackOnShelf();theCutter();
+  land.putImageData(architecture,0,0);ctx.drawImage(skyBuffer.canvas,0,0);ctx.drawImage(land.canvas,0,0);
+  beaconGlow();coastSoft.drawImage(land.canvas,0,0,480,270);
+}
+// A gaff cutter in the lee of the arch fixes the scale of the headland. Its
+// hull rests on the local swell and the set of each sail has a shallow camber.
+function theCutter(){
+  const X=53.15,Z=252.0,sea={};seaPoint(X,Z,null,sea);
+  const water=sea.y-.11,roll=-.085,pitch=.032,az=-.29,c=Math.cos(az),s=Math.sin(az);
+  function p(x,y,z){const Y=y+roll*z+pitch*x;return [X+c*x+s*z,water+Y,Z-s*x+c*z];}
+  const hull=material([39,49,58],[116,96,74],.19),ochre=material([113,74,54],[201,141,83],.16);
+  const stations=[[-5.0,.07,.10,1.14],[-3.7,.99,-.23,.80],[-1.3,1.22,-.39,.73],[1.9,1.18,-.32,.78],[3.8,.62,-.07,.94],[4.65,.13,.28,1.18]];
+  for(let i=1;i<stations.length;i++)for(const side of [-1,1]){
+    const a=stations[i-1],b=stations[i];
+    quad(p(a[0],a[2],side*a[1]*.48),p(b[0],b[2],side*b[1]*.48),p(b[0],b[3],side*b[1]),p(a[0],a[3],side*a[1]),hull);
+    stroke3(p(a[0],a[3]-.09,a[1]*side*1.01),p(b[0],b[3]-.09,b[1]*side*1.01),[174,149,103],.70);
+  }
+  const mast=p(-.48,8.95,0),foot=p(-.48,.72,0);
+  stroke3(foot,mast,[86,75,66],1.26);stroke3(p(4.0,1.02,0),p(6.1,1.74,0),[84,79,72],.76);
+  stroke3(mast,p(5.95,1.71,.03),[116,109,95],.54);stroke3(mast,p(-4.50,.98,.04),[109,105,98],.42);
+  const tack=[-.62,1.56],peak=[-3.87,6.55],throat=[-.58,8.16],clew=[-4.64,1.77];
+  function sail(u,v){
+    const a=lerp(tack[0],throat[0],v),b=lerp(clew[0],peak[0],v),
+      h=lerp(lerp(tack[1],throat[1],v),lerp(clew[1],peak[1],v),u);
+    return p(lerp(a,b,u),h,-.15-.63*Math.sin(PI*u)*Math.sin(PI*v*.86));
+  }
+  for(let i=0;i<8;i++)for(let j=0;j<7;j++){
+    quad(sail(i/8,j/7),sail((i+1)/8,j/7),sail((i+1)/8,(j+1)/7),sail(i/8,(j+1)/7),ochre);
+  }
+  for(let i=1;i<7;i++)stroke3(sail(i/7,.016),sail(i/7,.986),[144,104,78],.37);
+  face(p(-.12,7.74,.03),p(.07,1.69,-.13),p(5.18,1.89,.04),material([157,147,122],[226,205,157],.12));
+  stroke3(p(-.6,1.48,-.18),p(-4.86,1.7,-.17),[88,75,60],.85);
+  face(mast,p(-.48,8.41,0),p(-1.85,8.62,-.11),material([110,59,48],[172,83,54]));
+}
+function wrackOnShelf(){
+  const r=stream('bladderwrack at low tide');
+  const beds=[[11.65,17.10,.89],[12.94,19.25,.72],[10.46,15.55,.91],[13.75,17.72,.70],[9.67,13.40,.74]];
+  const olive=material([29,51,45],[115,108,59],.17),amber=material([44,59,41],[146,119,61],.18);
+  for(const [cx,cz,scale] of beds){
+    for(let j=0;j<19;j++){
+      let x=cx+(r()-.5)*.19,z=cz+(r()-.5)*.15,angle=r()*TAU;
+      const length=(.24+.85*r())*scale,phase=r()*TAU,leafWidth=(.018+.027*r())*scale,n=13+Math.floor(5*r());
+      let previous=null;
+      for(let i=0;i<=n;i++){
+        const t=i/n,a=angle+.59*Math.sin(phase+3.9*t)+.57*noise(x*2.1+17,z*1.78+t);
+        x+=Math.cos(a)*length/n;z+=Math.sin(a)*length/n;
+        let y=shelfHeight(x,z);if(y<-.1)break;
+        if(hollow(x,z)>0&&y<poolLevel)y=poolLevel-.025;
+        const width=leafWidth*(.45+.65*Math.sin(t*PI))*(1+.32*Math.sin(22*t+phase));
+        const dx=Math.sin(a)*width,dz=-Math.cos(a)*width;
+        const curr=[[x+dx,y+.042,z+dz],[x,y+.047+width*.3,z],[x-dx,y+.041,z-dz]];
+        if(previous){
+          quad(previous[0],previous[1],curr[1],curr[0],olive);
+          quad(previous[1],previous[2],curr[2],curr[1],amber);
+          if(i%4===0){
+            const lift=width*.72,p=[x+dx*.56,y+.061+lift*.7,z+dz*.56];
+            stroke3(curr[1],p,[117,111,62],.75);
+            stroke3(p,[p[0]+.036*Math.cos(a),p[1]+.007,p[2]+.036*Math.sin(a)],[106,99,54],1.05);
+          }
+        }
+        previous=curr;
+      }
+    }
+  }
+}
+// Bathymetric wash at the feet of the reefs. A local metric in the rotated
+// footprint of each skerry gives the foam an independently varying shoreline.
+const washGrid={x:-37,z:6,ds:.22,w:562,h:524},washMap=new Float32Array(washGrid.w*washGrid.h);
+function prepareReefWash(){
+  const g=washGrid;
+  for(const [cx,,cz,rx,,rz,theta] of reefs){
+    const c=Math.cos(theta),s=Math.sin(theta),radius=Math.max(rx,rz)+4.2;
+    const ilo=clamp(Math.floor((cx-radius-g.x)/g.ds),0,g.w-1),ihi=clamp(Math.ceil((cx+radius-g.x)/g.ds),0,g.w-1),
+          jlo=clamp(Math.floor((cz-radius-g.z)/g.ds),0,g.h-1),jhi=clamp(Math.ceil((cz+radius-g.z)/g.ds),0,g.h-1);
+    for(let j=jlo;j<=jhi;j++)for(let i=ilo;i<=ihi;i++){
+      const x=g.x+i*g.ds,z=g.z+j*g.ds,u=x-cx,v=z-cz;
+      const a=(u*c+v*s)/rx,b=(-u*s+v*c)/rz,dist=(Math.hypot(a,b)-.82)*Math.min(rx,rz);
+      const salt=fb3(x*.69+59,z*.70);
+      const w=(1-smooth(-.32,2.55+salt*1.63,dist))*(.73+.39*salt);
+      washMap[j*g.w+i]=Math.max(washMap[j*g.w+i],w);
+    }
+  }
+}
+function reefLather(x,z){
+  const g=washGrid,xx=(x-g.x)/g.ds,zz=(z-g.z)/g.ds;if(xx<0||xx>=g.w-1||zz<0||zz>=g.h-1)return 0;
+  const i=xx|0,j=zz|0,k=j*g.w+i;
+  return lerp(lerp(washMap[k],washMap[k+1],xx-i),lerp(washMap[k+g.w],washMap[k+g.w+1],xx-i),zz-j);
+}
+// The swell is a directional Gerstner spectrum. One shoaling packet crosses a
+// submerged reef. Its Lagrangian section folds back on itself at the plunging
+// lip, so a ray may hit several places on the same sheet.
+const waveRandom=stream('swell spectrum');
+const spectrum=[[32,.83,.30],[19.4,.59,-.52],[12.2,.40,.73],[8.6,.24,-.24],
+ [5.23,.155,.43],[3.76,.103,-.89],[2.54,.069,.61],[1.65,.036,-.37]].map(([length,amp,angle],i)=>{
+   const a=angle+(waveRandom()-.5)*.16,k=TAU/length;
+   return {kx:k*Math.sin(a),kz:k*Math.cos(a),a:amp,phase:waveRandom()*TAU,
+     horizontal:amp*(.50+.22*i/7)*Math.cos(a),ampSq:amp*.11};
+ });
+const sectionKnots=[
+ [-1.30,-1.30,0],[-1.00,-1.0,-.035],[-.78,-.79,-.073],[-.61,-.55,-.022],
+ [-.45,-.29,.112],[-.30,-.085,.305],[-.15,.074,.561],[-.025,.100,.786],
+ [.085,.021,.929],[.164,-.130,.977],[.217,-.241,.858],[.272,-.289,.664],
+ [.316,-.272,.694],[.372,-.225,.889],[.460,-.098,1.016],[.548,.092,1.006],
+ [.665,.356,.817],[.83,.666,.528],[1.01,.953,.219],[1.21,1.197,.061],[1.38,1.380,0]
+];
+const ptLo=-1.30,ptHi=1.38,nt=1600,dxProfile=.055,minX=-95,nX=3580;
+const section=new Float32Array(nt*6),breaker=new Float32Array(nX*8);
+function prepareBreaker(){
+  const za=sectionKnots.map(p=>[p[0],p[1]]),ha=sectionKnots.map(p=>[p[0],p[2]]);
+  for(let i=0;i<nt;i++){
+    const t=lerp(ptLo,ptHi,i/(nt-1)),j=i*6;
+    section[j]=knots(za,t)-t;
+    section[j+1]=knots(ha,t);
+    section[j+2]=Math.exp(-sq((t-.19)/.574))-.065*Math.exp(-sq((t+.63)/.23));
+  }
+  const dt=(ptHi-ptLo)/(nt-1);
+  for(let i=0;i<nt;i++){
+    const a=Math.max(0,i-1),b=Math.min(nt-1,i+1);
+    for(let n=0;n<3;n++)section[i*6+3+n]=(section[b*6+n]-section[a*6+n])/((b-a)*dt);
+  }
+  for(let i=0;i<nX;i++){
+    const x=minX+i*dxProfile,p=i*8;
+    breaker[p]=33.25+.49*(x+9.6)+.0028*sq(x+8)+.67*noise(x*.119+17,46)+.26*noise(x*.302,9.2);
+    breaker[p+1]=6.18*Math.exp(-sq((x+10.2)/10.8))+1.35*Math.exp(-sq((x+4.5)/19.7));
+    breaker[p+1]*=1+.044*noise(x*.61+4,14)+.021*noise(x*1.72,8.1);
+    breaker[p+2]=7.03+1.01*noise(x*.107+3,59.8)+.19*noise(x*.40,36.9);
+    breaker[p+3]=smooth(-24,-11.0,x)*smooth(8.0,-3.5,x)*(.88+.12*noise(x*.28,12.36));
+  }
+  for(let i=0;i<nX;i++){
+    const a=Math.max(0,i-1),b=Math.min(nX-1,i+1);
+    for(let n=0;n<4;n++)breaker[i*8+4+n]=(breaker[b*8+n]-breaker[a*8+n])/((b-a)*dxProfile);
+  }
+}
+const qWater=new Float32Array(W*H),normX=new Float32Array(W*H),normY=new Float32Array(W*H),normZ=new Float32Array(W*H);
+const whitecap=new Float32Array(W*H);
+const pathIndex=x=>clamp(Math.round((x-minX)/dxProfile),0,nX-1)*8;
+function seaPoint(x,q,atten,out){
+  let h=0,z=q,hx=0,hq=0,zx=0,zq=1,crest=0;
+  for(let i=0;i<spectrum.length;i++){
+    const w=spectrum[i],phase=w.kx*x+w.kz*q+w.phase,s=waveSin(phase),c=waveSin(phase+PI*.5);
+    const weight=atten?atten[i]:1;
+    const a=w.a*weight,b=w.horizontal*weight,dx=a*c*(1+.22*s),dd=-b*s;
+    h+=a*(s+.11*(s*s-.5));z+=b*c;
+    hx+=dx*w.kx;hq+=dx*w.kz;zx+=dd*w.kx;zq+=dd*w.kz;
+    crest+=a*w.kz*s;
+  }
+  if(q<99&&x>-73&&x<60){
+    const fi=clamp((x-minX)/dxProfile,0,nX-1.001),ii=fi|0,fx=fi-ii,p=ii*8;
+    const zc=lerp(breaker[p],breaker[p+8],fx),amp=lerp(breaker[p+1],breaker[p+9],fx),
+          width=lerp(breaker[p+2],breaker[p+10],fx),curl=lerp(breaker[p+3],breaker[p+11],fx),t=(q-zc)/width;
+    if(amp>.012&&t>ptLo&&t<ptHi){
+      const fiT=clamp((t-ptLo)*(nt-1)/(ptHi-ptLo),0,nt-1.001),it=fiT|0,ft=fiT-it,j=it*6;
+      const delta=lerp(section[j],section[j+6],ft);
+      const sectionHeight=lerp(lerp(section[j+2],section[j+8],ft),lerp(section[j+1],section[j+7],ft),curl);
+      const dH=lerp(lerp(section[j+5],section[j+11],ft),lerp(section[j+4],section[j+10],ft),curl);
+      const dTdx=-(breaker[p+4]+t*breaker[p+6])/width;
+      const shelter=1-.64*smooth(-.23,.86,sectionHeight)*clamp(amp/5);
+      h*=shelter;z=q+(z-q)*shelter;hx*=shelter;hq*=shelter;zx*=shelter;zq=1+(zq-1)*shelter;
+      h+=amp*sectionHeight;z+=width*delta*curl;
+      hx+=breaker[p+5]*sectionHeight+amp*(dH*dTdx+(section[j+1]-section[j+2])*breaker[p+7]);
+      hq+=amp*dH/width;
+      zx+=(breaker[p+6]*curl+width*breaker[p+7])*delta+width*curl*section[j+3]*dTdx;
+      zq+=curl*section[j+3];
+    }
+  }
+  // A screen-column parameter q maps rest X to final X by Z/q.
+  const ax=x/q,px=z/q+ax*zx,pq=ax*(zq-z/q);
+  let nx=hq*zx-zq*hx,ny=zq*px-pq*zx,nz=pq*hx-hq*px;
+  const inv=1/(Math.hypot(nx,ny,nz)||1);
+  out.z=z;out.y=h;out.nx=nx*inv;out.ny=ny*inv;out.nz=nz*inv;out.cap=crest;
+}
+function buildWater(){
+  prepareBreaker();visibleZ.set(solidZ);
+  const rows=[];
+  for(let q=5.9;q<2050;q+=(.080+.00065*q+.0000095*q*q)*(q>18&&q<54?.56:1)){
+    const foot=q*q/(F*EYE);
+    rows.push({q,atten:spectrum.map(w=>1/(1+.025*sq(foot*w.kz)))});
+  }
+  let previous={},current={};
+  for(let x=0;x<W;x++){
+    const ax=(x+.5-HX)/F;let py=H+160,pq=5.6,first=true;
+    for(const row of rows){
+      const q=row.q;seaPoint(ax*q,q,row.atten,current);
+      const cy=HY+(EYE-current.y)*F/current.z;
+      if(!first){
+        const lo=Math.max(0,Math.ceil(Math.min(py,cy)-.5)),hi=Math.min(H-1,Math.floor(Math.max(py,cy)-.5));
+        if(lo<=hi){
+          const den=1/(cy-py||.00001);
+          for(let y=lo;y<=hi;y++){
+            const t=clamp((y+.5-py)*den),z=1/lerp(1/previous.z,1/current.z,t),idx=y*W+x;
+            if(z>=visibleZ[idx])continue;
+            const u=t*z/current.z;
+            visibleZ[idx]=z;qWater[idx]=lerp(pq,q,u);
+            normX[idx]=lerp(previous.nx,current.nx,u);normY[idx]=lerp(previous.ny,current.ny,u);
+            normZ[idx]=lerp(previous.nz,current.nz,u);whitecap[idx]=lerp(previous.cap,current.cap,u);
+          }
+        }
+      }
+      first=false;py=cy;pq=q;const swap=previous;previous=current;current=swap;
+    }
+    for(let y=HY;y<=HY+14;y++){
+      const i=y*W+x;if(qWater[i]||solidZ[i]<DARK)continue;
+      visibleZ[i]=qWater[i]=F*EYE/Math.max(.18,y-HY+.50);normY[i]=1;
+    }
+  }
+}
+// Rest coordinates carry a two-scale network of air pockets. Stretching that
+// network over the folded surface leaves long rills on the face of the breaker.
+function foamCells(x,z) {
+  const ix=Math.floor(x),iz=Math.floor(z);let a=8,b=8;
+  for(let j=-1;j<2;j++)for(let i=-1;i<2;i++){
+    const xx=ix+i,zz=iz+j,dx=x-xx-(.08+.84*hash2(xx+19,zz)),dz=z-zz-(.08+.84*hash2(xx,zz+83));
+    const d=dx*dx+dz*dz;if(d<a){b=a;a=d;}else if(d<b)b=d;
+  }
+  return Math.sqrt(b)-Math.sqrt(a);
+}
+function shadeWater(){
+  prepareReefWash();
+  const im=ctx.getImageData(0,0,W,H),d=im.data;
+  const sky=skySoft.getImageData(0,0,480,270).data,coast=coastSoft.getImageData(0,0,480,270).data;
+  const spec=[0,0,0,0],rocks=[0,0,0,0];
+  for(let sy=440;sy<H;sy++)for(let sx=0;sx<W;sx++){
+    const i=sy*W+sx,q=qWater[i];if(q<=0)continue;
+    const z=visibleZ[i],ax=(sx+.5-HX)/F,ay=(HY-sy-.5)/F,x=ax*z,y=EYE+ay*z,restX=ax*q;
+    const p=pathIndex(restX),amp=breaker[p+1],width=breaker[p+2],t=(q-breaker[p])/width,curl=breaker[p+3];
+    let sheet=0,lip=0;
+    if(t>ptLo&&t<ptHi&&amp>.08){
+      const j=Math.round((t-ptLo)*(nt-1)/(ptHi-ptLo))*6;
+      sheet=clamp(lerp(section[j+2],section[j+1],curl))*clamp(amp/5.6);
+      lip=(Math.exp(-sq((t-.387)/.176))+.68*Math.exp(-sq((t-.215)/.085)))*curl;
+    }
+    const invView=1/Math.hypot(ax,ay,1),vx=-ax*invView,vy=-ay*invView,vz=-invView;
+    const fineFade=1/(1+sq(z/137)),swellNoise=fb3(restX*.31+q*.055,q*.41);
+    const small=fb3(restX*1.34+.66*swellNoise,q*1.62+8);
+    const chop1=waveSin(restX*5.9+q*9.3+3.1*swellNoise+1.12*small),
+          chop2=waveSin(-restX*9.3+q*13.7+2.6*small+1.5*swellNoise);
+    const current=.65+.45*smooth(-.42,.60,swellNoise+.30*small);
+    let nx=normX[i]+fineFade*(.078*small+current*(.034*chop1-.023*chop2)+.016*noise(restX*7.1,q*5.8));
+    let ny=normY[i],nz=normZ[i]+fineFade*(.086*fb3(restX*1.62+7,q*2.06+.71*swellNoise)+current*(.047*chop1+.030*chop2)+.016*noise(restX*6.3,q*9.2));
+    const inv=1/(Math.hypot(nx,ny,nz)||1);nx*=inv;ny*=inv;nz*=inv;
+    let ndv=nx*vx+ny*vy+nz*vz;
+    if(ndv<0){nx=-nx;ny=-ny;nz=-nz;ndv=-ndv;}
+    const rx=2*ndv*nx-vx,ry=2*ndv*ny-vy,rz=2*ndv*nz-vz;
+    const reflX=HX+F*rx/Math.max(.16,rz),reflY=HY-F*ry/Math.max(.16,rz);
+    sampleRGBA(sky,480,270,reflX*.25,Math.min(HY,reflY)*.25,spec);
+    const outside=clamp(Math.max(-reflX,reflX-W,-reflY,0)/540+.74*smooth(.24,-.31,rz));
+    const down=smooth(.02,-.23,ry);
+    spec[0]=lerp(lerp(spec[0],86+37*(1-clamp(ry)),outside),45,down*.81);
+    spec[1]=lerp(lerp(spec[1],106+30*(1-clamp(ry)),outside),68,down*.79);
+    spec[2]=lerp(lerp(spec[2],127+20*(1-clamp(ry)),outside),78,down*.75);
+    // Intersect the reflected ray with the headland's range before sampling it.
+    // A nearby crest consequently sees a shifted arch and soffit.
+    if(rz>.07&&z<96&&reflX>815){
+      const zplane=94,tr=(zplane-z)/rz,xx=HX+F*(x+rx*tr)/zplane,yy=HY-F*(y+ry*tr-EYE)/zplane;
+      if(tr>0&&xx>926&&xx<W&&yy>65&&yy<685){
+        sampleRGBA(coast,480,270,xx*.25,yy*.25,rocks);const w=rocks[3]/255*.90;
+        for(let k=0;k<3;k++)spec[k]=lerp(spec[k],rocks[k],w);
+      }
+    }
+    const fresnel=clamp(.0204+.9796*Math.pow(1-ndv,5));
+    const back=Math.exp(-sq((sx-SUN.x)/780)),top=clamp(.28+.48*ny-.20*nx+.12*small);
+    const foamLight=clamp(.42+.36*ny-.28*nx+.11*swellNoise);
+    const heightRatio=sheet>0?clamp((y+.42)/Math.max(3.15,amp)):0;
+    const striae=fb3(restX*1.73+swellNoise*.83+q*.15,q*.49+13);
+    const runnel=1-smooth(.015,.33,Math.abs(noise(restX*2.42+striae*.94,q*.53+2.7*striae)));
+    const waterThickness=.33+2.0*(1-heightRatio)+.55*(1-top)+.31*striae;
+    const transmission=Math.exp(-.38*waterThickness)*Math.pow(heightRatio,.59)*clamp(amp/4.2)*(.58+.42*back);
+    const faceLight=transmission*(.83+.19*striae+.18*runnel);
+    const seaTone=clamp(.32+.31*ny-.29*nx+.28*swellNoise+.19*small);
+    let bodyR=9+28*seaTone+faceLight*(48+48*back);
+    let bodyG=44+47*seaTone+faceLight*(128+30*back);
+    let bodyB=60+49*seaTone+faceLight*(97+15*back);
+    const shadowDist=breaker[p]-z;
+    let sunVisible=1;
+    if(shadowDist>0&&shadowDist<40){
+      const shadowX=x-.342*shadowDist,j=pathIndex(shadowX),testHeight=breaker[j+1]-(y+.061*shadowDist+.6);
+      sunVisible=1-.85*smooth(.35,3.1,testHeight)*smooth(40,26,shadowDist);
+    }
+    const curlShade=curl*Math.exp(-sq((t+.082)/.243))*clamp(amp/5);
+    const underwater=(.86+.14*sunVisible)*(1-.33*curlShade);
+    bodyR*=underwater;bodyG*=underwater;bodyB*=underwater;
+    const dvx=(reflX-SUN.x)/(41+25*(1-top)),dvy=(reflY-SUN.y)/(32+22*(1-top));
+    const alignment=dvx*dvx+dvy*dvy;
+    const hvx=vx-.3207,hvy=vy+.0568,hvz=vz+.9454,hInv=1/(Math.hypot(hvx,hvy,hvz)||1);
+    const nh=clamp((nx*hvx+ny*hvy+nz*hvz)*hInv),spread=.148+.062*fineFade;
+    const gloss=nh>.73?Math.exp(-(1-nh*nh)/(nh*nh*spread*spread)):0;
+    const glint=sunVisible*((rz>0&&alignment<15?.53*Math.exp(-alignment*.48)+2.0*Math.exp(-alignment*4.7):0)+
+      gloss*(.46+.86*(1-clamp(vy))));
+    let rr=encode(lerp(lin[clamp(bodyR|0,0,255)],lin[clamp(spec[0]|0,0,255)],fresnel)+glint),
+        gg=encode(lerp(lin[clamp(bodyG|0,0,255)],lin[clamp(spec[1]|0,0,255)],fresnel)+glint*.73),
+        bb=encode(lerp(lin[clamp(bodyB|0,0,255)],lin[clamp(spec[2]|0,0,255)],fresnel)+glint*.37);
+    const turbulenceMask=smooth(.19,.68,whitecap[i]+.19*swellNoise+.079*small);
+    const collapse=smooth(-7,-18,restX)*Math.exp(-sq((t+.025)/.73))*clamp(amp/4.2);
+    const upper=smooth(.77,1.01,heightRatio);
+    const spill=(.22*lip+.39*upper+.13*sheet+.48*collapse)*clamp(amp/5.2);
+    const shelf=reefLather(x,z);
+    const streaks=fb3(restX*.56+.6*swellNoise,q*.32+64);
+    const wakeA=(q-(18.3+.27*restX+1.27*Math.sin(restX*.41)+1.55*swellNoise))/1.39;
+    const wakeB=(q-(24.8-.28*restX+1.62*Math.sin(restX*.32+2)+.75*swellNoise))/1.19;
+    const raft=(.68*Math.exp(-wakeA*wakeA)+.55*Math.exp(-wakeB*wakeB))*
+       smooth(-.43,.46,streaks+.26*small+.12);
+    const runOut=.32*Math.exp(-sq((q-(23+.22*restX+1.37*Math.sin(restX*.61)+1.69*swellNoise))/2.18))*
+      Math.exp(-sq((restX+9.5)/8))*smooth(-.31,.54,streaks+.41*small);
+    const wash=clamp(.05+.42*turbulenceMask+spill+shelf*.98+raft+runOut+
+       .28*smooth(.13,.67,streaks+.48*swellNoise)*smooth(115,20,z),0,1.48);
+    let froth=0;
+    if(wash>.090){
+      const whip=fb3(restX*.84+1.70*swellNoise,q*.73+2.25*streaks);
+      const warpX=2.29*swellNoise+.80*small+1.02*whip,warpZ=1.91*fb3(restX*.39+41,q*.33)+.56*small+.91*whip;
+      const fx=restX*(2.10+.82*sheet)+warpX+.31*q,fz=q*(2.02-.95*sheet)+warpZ;
+      const edge=foamCells(fx,fz),micro=fb3(fx*2.65+.43*whip,fz*2.75+2);
+      const smallEdge=foamCells(fx*2.77+.84*small+12,fz*2.58+.73*micro+36);
+      const mass=wash+.24*streaks+.23*small+.20*micro+.24*whip;
+      const lace=(1-smooth(.014+.055*wash,.084+.16*wash,edge))*
+          smooth(.10,.52,mass)*(.41+.42*wash);
+      const fine=(1-smooth(.018,.142,smallEdge))*smooth(.24,.69,mass)*(.31+.25*wash);
+      const islands=smooth(.54,1.16,mass+.26*micro+.09*runnel-.28*edge);
+      froth=clamp(islands+(.77*lace+.65*fine)*(1-islands));
+      froth=lerp(froth,clamp(wash*.55-.06),smooth(120,420,z)*.88);
+      const pearl=clamp(.29+.39*foamLight+.22*small+.19*micro+.13*sheet+.09*whip);
+      rr=lerp(rr,lerp(114,251,pearl)+3*back,froth);
+      gg=lerp(gg,lerp(141,243,pearl),froth);bb=lerp(bb,lerp(152,222,pearl),froth);
+    }
+    const haze=clamp(1-Math.exp(-z*.00078),0,.86),gold=Math.exp(-Math.abs(sx-SUN.x)/410);
+    const k=i*4;d[k]=lerp(rr,166+40*gold,haze);d[k+1]=lerp(gg,171+20*gold,haze);
+    d[k+2]=lerp(bb,177-9*gold,haze);d[k+3]=255;
+  }
+  ctx.putImageData(im,0,0);
+}
+// Trace entrained bubbles in material coordinates and then project them onto
+// the visible side of the sheet. Detached rivulets below the lip follow gravity.
+function airInTheBreaker(){
+  const r=stream('entrained air'),out={};
+  function point(x,t){
+    const p=pathIndex(x),q=breaker[p]+breaker[p+2]*t;seaPoint(x,q,null,out);
+    const z=out.z,X=x*z/q,Y=out.y;
+    return {x:HX+F*X/z,y:HY+F*(EYE-Y)/z,z,X,Y};
+  }
+  function exposed(p,tol=.20){
+    const x=p.x|0,y=p.y|0;return x>=0&&x<W&&y>=0&&y<H&&p.z<=visibleZ[y*W+x]+tol;
+  }
+  for(let j=0;j<211;j++){
+    const center=-24+r()*31,k=pathIndex(center),amp=breaker[k+1],curl=breaker[k+3];
+    if(amp<1.7)continue;
+    const density=clamp(.44+.70*noise(center*.67,24.71)+.30*noise(center*.32,62));
+    if(r()>.40+density*.62)continue;
+    const n=4+Math.floor(density*18),startT=.08+.49*r();
+    for(let b=0;b<n;b++){
+      const xx=center+gauss(r)*.22,tt=startT+gauss(r)*.065;
+      const duration=.026+.129*r(),width=.37+.86*r()**1.3,phase=r()*TAU;
+      let previous=point(xx,tt);
+      const light=clamp(.39+.36*r()+.19*curl);
+      const col=mix([155,195,184],[250,238,205],light);
+      for(let i=1;i<=7;i++){
+        const v=i/7,t=tt+duration*v;
+        const p=point(xx-.12*v+.08*Math.sin(phase+v*3.2)+.037*noise(xx*4,v*2),t);
+        if(exposed(previous,.13)&&exposed(p,.13)){
+          const opacity=(.16+.37*density)*Math.sin((.08+.89*v)*PI)*(.54+.46*r());
+          line(ctx,previous.x,previous.y,p.x,p.y,rgb(col,opacity),width*(1.12-.46*v));
+          if(i%2===0)ellipse(ctx,p.x+r()*.7,p.y,Math.max(.22,width*.58),width*.43,phase,rgb(col,opacity*.81));
+        }
+        previous=p;
+      }
+    }
+  }
+  for(let j=0;j<116;j++){
+    const center=-20+r()*23,k=pathIndex(center),curl=breaker[k+3];
+    const burst=smooth(-.30,.46,noise(center*.89,64)+.39*noise(center*.39,9.7));
+    if(curl<.34||r()>.23+.71*burst)continue;
+    for(let b=0;b<3+Math.floor(9*burst);b++){
+      const xx=center+gauss(r)*.084,t=.265+.029*r(),start=point(xx,t);
+      if(!exposed(start,.22))continue;
+      const time=(.075+.26*r()**1.45)*(.56+burst*.67),push=-.63-1.25*r(),side=(r()-.30)*1.20;
+      let prev=start;
+      const col=mix([116,182,170],[236,233,200],.32+.60*r()),w=.39+.67*r();
+      for(let i=1;i<=6;i++){
+        const a=time*i/6,Z=start.z+push*a,X=start.X+side*a-.17*a*a,Y=start.Y-(1.32+curl)*a-4.905*a*a;
+        const pos=project(X,Y,Z),p={x:pos[0],y:pos[1],z:Z};
+        if(exposed(p)&&exposed(prev))line(ctx,prev.x,prev.y,p.x,p.y,rgb(col,(.11+.33*burst)*(1-i/8)),w*(1-i*.075));
+        prev=p;
+      }
+      for(let bead=0;bead<3;bead++){
+        const a=time*(1.0+.51*r()),Z=start.z+push*a,X=start.X+side*a+.006*gauss(r),Y=start.Y-(1.32+curl)*a-4.905*a*a;
+        const pos=project(X,Y,Z);if(exposed({x:pos[0],y:pos[1],z:Z}))
+          ellipse(ctx,pos[0],pos[1],w*(.28+.34*r()),w*(.59+.37*r()),-.16,rgb(col,.27+.24*r()));
+      }
+    }
+  }
+}
+// Ballistic droplets. Each emitter sheds both discrete beads and an optical
+// density field made of advected, anisotropic parcels of mist.
+function oceanSpray(){
+  const r=stream('salt thrown by the gale'),mw=W/2,mh=H/2,volume=new Float32Array(mw*mh),tone=new Float32Array(mw*mh);
+  const droplets=[],jets=[],sample={};
+  function parcel(X,Y,Z,rx,ry,opacity,sun){
+    const P=project(X,Y,Z),cx=P[0]*.5,cy=P[1]*.5,Rx=Math.max(.6,rx*.5),Ry=Math.max(.6,ry*.5);
+    if(cx+Rx<0||cx-Rx>=mw||cy+Ry<0||cy-Ry>=mh)return;
+    const xa=Math.max(0,Math.floor(cx-Rx)),xb=Math.min(mw-1,Math.ceil(cx+Rx));
+    for(let yy=Math.max(0,Math.floor(cy-Ry));yy<=Math.min(mh-1,Math.ceil(cy+Ry));yy++){
+      const v=(yy-cy)/Ry;
+      for(let xx=xa;xx<=xb;xx++){
+        const u=(xx-cx)/Rx,rr=1-u*u-v*v;if(rr<=0)continue;
+        if(Z>visibleZ[(yy*2)*W+(xx*2)]+.20)continue;
+        const w=opacity*rr*rr,k=yy*mw+xx;volume[k]+=w;tone[k]+=sun*w;
+      }
+    }
+  }
+  function addEmitter(X,Y,Z,energy,mode,length){
+    const phase=r()*TAU,burst=.39+.69*r(),wind=mode==='breaker'?-1.83:-.95;
+    for(let n=0;n<length;n++){
+      const g=gauss(r),age=Math.pow(r(),.86)*(.48+energy*.39),VY=(2.0+3.4*r())*energy*(.75+.31*burst),
+        VX=wind*(.27+1.5*r())*energy+g*.58,VZ=(r()-.54)*1.56*energy;
+      const x=X+gauss(r)*(.052+.12*energy)+VX*age-.35*age*age,
+        y=Y+VY*age-4.905*age*age,z=Z+gauss(r)*.082+VZ*age;
+      if(y<Y-.32)continue;
+      const px=F*x/z+HX,py=HY-F*(y-EYE)/z,fac=F/z;
+      const light=clamp(.54+.24*age+.19*r()-.11*g);
+      if(n%4===0){
+        const rad=(.09+.31*r()+age*(.23+.40*r()))*fac*(mode==='breaker'?1:.88);
+        parcel(x,y,z,rad*(1.12+.42*age),rad*(.48+.35*r()),
+          (.11+.22*r())*burst*(1-.63*age),light);
+      }
+      if(px>=1&&px<W-1&&py>=1&&py<H-1&&z<=visibleZ[(py|0)*W+(px|0)]+.14){
+        const size=(.004+.018*r()**2)*fac*(.55+.82*r());
+        droplets.push([px,py,size,VX*fac*.006,-(VY-9.81*age)*fac*.007,light,.22+.63*r(),age]);
+      }
+    }
+    if(mode==='reef'&&r()<.69){
+      const p=project(X,Y,Z),v=2.45+2.05*r();
+      jets.push([p[0],p[1],v*F/Z*.29,phase,.32+.63*r(),Z]);
+    }
+  }
+  for(let j=0;j<229;j++){
+    const x=-26+r()*34,k=pathIndex(x),amp=breaker[k+1],cr=breaker[k+3];
+    const breakHere=clamp(.19+.62*cr+.27*noise(x*.64+4,12.85)+.18*noise(x*.25,69));
+    if(amp<1.0||r()>breakHere+.12)continue;
+    const t=lerp(.194,.47,cr)+.052*gauss(r),q=breaker[k]+breaker[k+2]*t;
+    seaPoint(x,q,null,sample);const Z=sample.z,X=x*Z/q;
+    addEmitter(X,sample.y-.041,Z,clamp(.66+.40*cr+.31*noise(x*.55,16.1),.40,1.54),'breaker',52+Math.round(40*r()));
+  }
+  // Shoaling varies along the reef. At the western end the lip has already
+  // struck the face. A cluster of plumes is thrown out in front of the wave.
+  for(let j=0;j<83;j++){
+    const x=-16.0+gauss(r)*2.27,k=pathIndex(x),u=-.52+.23*r();
+    const q=breaker[k]+breaker[k+2]*u;seaPoint(x,q,null,sample);
+    const Z=sample.z-.26-.55*r(),X=x*sample.z/q,Y=sample.y+.12;
+    const burst=clamp(.55+.64*noise(x*1.17,32.3)+.42*r(),.31,1.37);
+    const n=26+Math.floor(burst*38);
+    for(let m=0;m<n;m++){
+      const t=r()*.53,vx=-1.4-2.8*r(),vy=2.1+3.2*r(),vz=-1.9-2.0*r();
+      const xx=X+vx*t*burst+.13*gauss(r),yy=Y+vy*t*burst-4.905*t*t,zz=Z+vz*t;
+      const pp=project(xx,yy,zz),size=F/zz*(.065+.19*r()+.31*t);
+      if(m%3===0)parcel(xx,yy,zz,size*1.37,size*.89,.18+.37*r(),.44+.39*t+.14*r());
+      const px=pp[0]|0,py=pp[1]|0;
+      if(px>=0&&px<W&&py>=0&&py<H&&zz<visibleZ[py*W+px]+.12)
+        droplets.push([pp[0],pp[1],(.007+.017*r())*F/zz,vx*.19,-(vy-9.81*t)*.16,.60+.35*r(),.44+.49*r(),t]);
+    }
+  }
+  // Use the actual projected summit for the wind combed from the crest.
+  for(let j=0;j<85;j++){
+    const x=(j%4===0?-5.6:-12.8)+gauss(r)*(j%4===0?1.26:2.2),k=pathIndex(x);
+    let y=0,z=1,X=0,highest=H;
+    for(let n=0;n<18;n++){
+      const q=breaker[k]+breaker[k+2]*(.11+n*.027);
+      seaPoint(x,q,null,sample);
+      const screen=HY+F*(EYE-sample.y)/sample.z;
+      if(screen<highest){highest=screen;y=sample.y;z=sample.z;X=x*z/q;}
+    }
+    const burst=.49+.65*Math.max(0,noise(x*.78,39))+.23*r();
+    for(let m=0;m<37;m++){
+      const t=r()*.81,vx=-(1.5+3.8*r())*burst,vy=(2.35+3.94*r())*burst,vz=.43-r()*.97;
+      const xx=X+vx*t-.6*t*t+.10*gauss(r),yy=y+vy*t-4.905*t*t,zz=z+vz*t;
+      if(yy<y-.18)continue;
+      if(m%3===0){
+        const size=(.065+.235*r()+.44*t)*F/zz;
+        parcel(xx,yy,zz,size*(1.15+.81*t),size*.71,.13+.31*r(),.78+.20*r());
+      }
+      const pp=project(xx,yy,zz),px=pp[0]|0,py=pp[1]|0;
+      if(px>=0&&px<W&&py>=0&&py<H&&zz<visibleZ[py*W+px]+.14)
+        droplets.push([pp[0],pp[1],(.0037+.017*r()**1.5)*F/zz,vx*.23,-(vy-9.81*t)*.22,.78+.20*r(),.37+.58*r(),t]);
+    }
+  }
+  // Local impacts around the arch and in the nearer channels.
+  const splashes=[[3.3,85.3,1.26],[7.1,82.2,.82],[28.9,81.4,1.48],[34.5,77.2,.87],
+    [15.0,48.2,.90],[11.1,17.3,.45],[9.63,15.4,.37]];
+  for(const [x,z,e] of splashes)for(let j=0;j<16;j++){
+    const xx=x+gauss(r)*e*.62,zz=z+gauss(r)*e*.35;
+    seaPoint(xx,zz,null,sample);
+    const y=Math.max(.11,sample.y);
+    addEmitter(xx,y+.12,zz,e*(.65+.61*r()),'reef',37);
+  }
+  const im=ctx.getImageData(0,0,W,H),d=im.data;
+  for(let y=410;y<H;y++)for(let x=0;x<W;x++){
+    const ix=x>>1,iy=y>>1,k=iy*mw+ix;
+    if(volume[k]<.002&&(ix===mw-1||volume[k+1]<.002)&&(iy===mh-1||volume[k+mw]<.002))continue;
+    const fx=x*.5-ix,fy=y*.5-iy,ka=iy*mw+Math.min(ix+1,mw-1),kb=Math.min(iy+1,mh-1)*mw+ix,kc=Math.min(iy+1,mh-1)*mw+Math.min(ix+1,mw-1);
+    const rho=lerp(lerp(volume[k],volume[ka],fx),lerp(volume[kb],volume[kc],fx),fy);
+    const l=clamp(lerp(lerp(tone[k],tone[ka],fx),lerp(tone[kb],tone[kc],fx),fy)/(.0001+rho));
+    const eddy=fb3(x*.046-y*.019,y*.076)+.21*noise(x*.21,y*.23);
+    const op=1-Math.exp(-rho*(.54+.38*eddy)),k4=(y*W+x)*4,back=Math.exp(-Math.abs(x-SUN.x)/473);
+    const r0=lerp(169,248,l)+7*back,g0=lerp(184,236,l),b0=lerp(184,217,l)-5*back;
+    d[k4]=lerp(d[k4],r0+eddy*11,op);d[k4+1]=lerp(d[k4+1],g0+eddy*9,op);d[k4+2]=lerp(d[k4+2],b0+eddy*6,op);
+  }
+  ctx.putImageData(im,0,0);
+  for(const [x,y,h,a,shade,z] of jets){
+    for(let j=0;j<4;j++){
+      const xx=x+(r()-.5)*h*.32,dx=(r()-.39)*h*.68,len=h*(.30+.85*r());
+      if(z>visibleZ[clamp(y|0,0,H-1)*W+clamp(xx|0,0,W-1)]+.5)continue;
+      ctx.strokeStyle=rgb(mix([155,183,186],[237,229,203],shade),.22+.25*r());ctx.lineWidth=.48+.43*r();
+      ctx.beginPath();ctx.moveTo(xx,y);ctx.quadraticCurveTo(xx+dx*.25,y-len*.88,xx+dx,y-len);ctx.stroke();
+    }
+  }
+  for(const [x,y,sz,dx,dy,light,a,age] of droplets){
+    if(sz<.31&&a<.49)continue;
+    const col=mix([159,188,189],[253,239,208],light);
+    if(sz>.57&&age>.16)line(ctx,x,y,x+dx,y+dy,rgb(col,a*.73),Math.max(.45,sz*.86));
+    else ellipse(ctx,x,y,Math.max(.23,sz),Math.max(.20,sz*.77),0,rgb(col,a*.82));
+  }
+}
+function fulmars(){
+  const r=stream('fulmars on the wind');
+  const flock=[[934,284,27,-.19],[908,300,14,.23],[998,316,17,.40],[1096,336,12,-.28],
+    [1113,333,8,-.35],[1187,399,10,.16],[1397,405,12,-.54],[1422,413,7,.14],
+    [714,260,9,.18],[681,267,6,-.21],[1650,236,12,.12],[1629,240,8,-.25]];
+  for(const [x,y,s,roll] of flock){
+    const fore=.64+.44*r(),far=.64+.31*r(),flex=r()*.17;
+    ctx.save();ctx.translate(x,y);ctx.rotate(roll);ctx.scale(s,s);
+    ctx.fillStyle=rgb(mix([62,72,81],[116,120,119],r()*.65));ctx.beginPath();
+    ctx.moveTo(-fore*.56,-.19-flex);ctx.bezierCurveTo(-.34,-.18,-.18,-.045,-.055,-.019);
+    ctx.quadraticCurveTo(.042,-.06,.087,-.047);ctx.quadraticCurveTo(.23,-.224,far*.54,-.204-flex);
+    ctx.quadraticCurveTo(.27,-.166,.11,.026);ctx.lineTo(.027,.062);ctx.lineTo(-.079,.087);
+    ctx.lineTo(-.066,.028);ctx.bezierCurveTo(-.25,-.003,-.39,-.174,-fore*.56,-.19-flex);ctx.fill();
+    if(s>10){
+      ctx.fillStyle='rgba(231,216,181,.88)';ctx.beginPath();ctx.moveTo(-fore*.38,-.14-flex*.72);
+      ctx.quadraticCurveTo(-.15,-.093,-.02,.007);ctx.quadraticCurveTo(-.18,-.04,-fore*.38,-.14-flex*.72);ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+function finish(){
+  const im=ctx.getImageData(0,0,W,H),d=im.data,src=new Uint8ClampedArray(d);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const j=y*W+x,k=j*4;
+    let rr=src[k],gg=src[k+1],bb=src[k+2];
+    // Subpixel smoothing restricted to high-contrast geometric silhouettes.
+    if(x>0&&x<W-1&&y>0&&y<H-1){
+      const mask=visibleZ[j]<185,l=visibleZ[j-1]<185,r=visibleZ[j+1]<185,
+        u=visibleZ[j-W]<185,v=visibleZ[j+W]<185;
+      if((l!==r||u!==v)&&Math.abs(src[k+1]-src[k+5])+Math.abs(src[k+1]-src[k+4*W+1])>47){
+        const nb=mask?(l!==mask?k-4:r!==mask?k+4:u!==mask?k-4*W:k+4*W):
+                    (l?k-4:r?k+4:u?k-4*W:k+4*W);
+        rr=lerp(rr,src[nb],.14);gg=lerp(gg,src[nb+1],.14);bb=lerp(bb,src[nb+2],.14);
+      }
+    }
+    const l=.225*rr+.685*gg+.09*bb,lum=l/255,shade=sq(1-lum),contrast=8.7*Math.tanh((lum-.52)*3.0);
+    const ax=(x-W*.49)/(W*.72),ay=(y-H*.48)/(H*.99),vignette=1-.12*clamp((ax*ax+ay*ay-.17)*1.14);
+    const grain=(hash2(x+19,y+71)-.5)*2.45;
+    d[k]=(l+(rr-l)*1.065+contrast+2.2*lum-1.6*shade)*vignette+grain;
+    d[k+1]=(l+(gg-l)*1.052+contrast*.86+.68*lum)*vignette+grain;
+    d[k+2]=(l+(bb-l)*1.064+contrast*.70-1.46*lum+2.1*shade)*vignette+grain;
+  }
+  ctx.putImageData(im,0,0);
+}
+async function paint(){
+  await step('Gathering the storm light…');clearSky();stormDeck();
+  await step('Weathering the sea arch…');headlands();rockCoast();intertidal();
+  await step('Lighting the keeper’s lantern…');keeperStation();
+  await step('Raising the Atlantic swell…');buildWater();shadeWater();
+  await step('Carrying the spray downwind…');airInTheBreaker();oceanSpray();fulmars();finish();
+  canvas.dataset.seed=requestedSeed;document.body.dataset.ready='true';status.hidden=true;
+}
+paint().catch(error=>{status.textContent='The painting could not finish. Reload to try again.';console.error(error);});
+})();
+</script></body></html>
