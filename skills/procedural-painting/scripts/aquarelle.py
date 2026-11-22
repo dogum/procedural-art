@@ -336,15 +336,7 @@ class Paper:
         sg = max(2.0, 0.3 * reach)
         frac = float(np.clip(0.78 * bloom, 0, 0.92))
         for p in self.wet_paints:
-            seen = (self._big(p.a + p.s) * (p.crisp.astype(F32) / 255))[sl]
-            for psl, keep, add in p.fine:                                       # earlier backruns, where they overlap this one
-                y0, y1 = max(sl[0].start, psl[0].start), min(sl[0].stop, psl[0].stop)
-                x0, x1 = max(sl[1].start, psl[1].start), min(sl[1].stop, psl[1].stop)
-                if y0 >= y1 or x0 >= x1:
-                    continue
-                here = (slice(y0 - sl[0].start, y1 - sl[0].start), slice(x0 - sl[1].start, x1 - sl[1].start))
-                there = (slice(y0 - psl[0].start, y1 - psl[0].start), slice(x0 - psl[1].start, x1 - psl[1].start))
-                seen[here] = seen[here] * keep[there] + add[there]
+            seen = self._onsheet(p, p.a + p.s)[sl]                                # what is on the sheet: rim drawn, earlier backruns applied
             f = frac * (1 - 0.8 * p.stain) * Rs * smoothstep(0.1, 0.5, ready_b[sl])
             lifted = seen * f
             M = float(lifted.sum())
@@ -589,7 +581,11 @@ class Paper:
     def _wet_ks(self):
         ks = self.dep_s.copy()
         for p in self.wet_paints:
-            ks += ((p.a + p.s) * self._small(p.crisp.astype(F32) / 255))[..., None] * p.ks
+            if p.fine:                                                           # backruns live at full size: bring them down to the water grid
+                amount = self._small(self._onsheet(p, p.a + p.s))
+            else:
+                amount = (p.a + p.s) * self._small(p.crisp.astype(F32) / 255)
+            ks += amount[..., None] * p.ks
         return ks
 
     def _frame(self):
