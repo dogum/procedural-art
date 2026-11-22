@@ -337,9 +337,14 @@ class Paper:
         frac = float(np.clip(0.78 * bloom, 0, 0.92))
         for p in self.wet_paints:
             seen = (self._big(p.a + p.s) * (p.crisp.astype(F32) / 255))[sl]
-            for psl, keep, add in p.fine:                                       # (an earlier backrun here)
-                if psl == sl:
-                    seen = seen * keep + add
+            for psl, keep, add in p.fine:                                       # earlier backruns, where they overlap this one
+                y0, y1 = max(sl[0].start, psl[0].start), min(sl[0].stop, psl[0].stop)
+                x0, x1 = max(sl[1].start, psl[1].start), min(sl[1].stop, psl[1].stop)
+                if y0 >= y1 or x0 >= x1:
+                    continue
+                here = (slice(y0 - sl[0].start, y1 - sl[0].start), slice(x0 - sl[1].start, x1 - sl[1].start))
+                there = (slice(y0 - psl[0].start, y1 - psl[0].start), slice(x0 - psl[1].start, x1 - psl[1].start))
+                seen[here] = seen[here] * keep[there] + add[there]
             f = frac * (1 - 0.8 * p.stain) * Rs * smoothstep(0.1, 0.5, ready_b[sl])
             lifted = seen * f
             M = float(lifted.sum())
