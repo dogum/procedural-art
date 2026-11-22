@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Real mountains, glass and paintings made with code and real elevation data. No image model. Three open-source Claude skills.">
+<meta name="description" content="Real mountains, glass and paintings made with code and real elevation data. No image model. Four open-source Claude skills.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="procedural-art: real mountains from elevation data, no image model">
-<meta property="og:description" content="Real elevation data, a physical sky and a path tracer. No image model. Three open-source Claude skills.">
+<meta property="og:description" content="Real elevation data, a physical sky and a path tracer. No image model. Four open-source Claude skills.">
 <meta property="og:image" content="https://dogum.github.io/procedural-art/media/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -180,7 +180,7 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
 
 <div class="wrap">
   <header class="hero">
-    <div class="hero-top"><span><b>procedural-art</b> · three Claude skills · no image model</span><nav class="topnav" aria-label="Site"><a href="app/">Any mountain</a><a href="#paintings">Paintings</a><a href="#studios">Studios</a><a href="#install">Install</a><a href="https://github.com/dogum/procedural-art">GitHub</a></nav></div>
+    <div class="hero-top"><span><b>procedural-art</b> · four Claude skills · no image model</span><nav class="topnav" aria-label="Site"><a href="app/">Any mountain</a><a href="#paintings">Paintings</a><a href="#studios">Studios</a><a href="#install">Install</a><a href="https://github.com/dogum/procedural-art">GitHub</a></nav></div>
     <div class="stage">
       <a class="stage-cta" href="app/">Try any mountain <span aria-hidden="true">→</span></a>
       <video id="heroVid" src="media/orbit.mp4" poster="media/orbit_poster.jpg" autoplay muted loop playsinline aria-label="Ararat in the moonlit line style, orbiting slowly"></video>
@@ -430,6 +430,36 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
       </div>
     </section>
 
+    <section class="plate" aria-labelledby="pcv" id="canvas">
+      <div class="margin">
+        <span class="pno">Plate VII</span>
+        <h2 id="pcv">One file, one landscape</h2>
+        <p>Each of these is a single HTML file of Canvas and plain JavaScript. It holds no image and loads nothing: open it and your browser computes every pixel in a few seconds.</p>
+        <p><a class="btn" href="canvas/">Open the gallery</a></p>
+        <div class="data">70–190 KB each, 3–10 s to paint<br>seeded: <b>?seed=</b> in the address<br>two made by Claude, four by OpenAI Codex<br>the same prompt given to both, side by side</div>
+      </div>
+      <div class="main">
+        <figure>
+          <a class="frame free" style="display:block" href="canvas/fuji-at-first-light.html"><img src="media/cv_fuji_at_first_light.jpg" alt="Mount Fuji mirrored in a still lake at dawn, a pine on the left and a red maple branch on the right: drawn by one HTML file" width="1600" height="900" loading="lazy"></a>
+          <figcaption><span>Fuji at first light · the real mountain, from elevation data inside the file · click to watch it paint</span></figcaption>
+        </figure>
+        <figure>
+          <a class="frame free" style="display:block" href="canvas/larkspur-mere.html"><img src="media/cv_larkspur_mere.jpg" alt="A snow-covered massif mirrored in a still green lake, a lone pine on an island: drawn by one HTML file" width="1600" height="900" loading="lazy"></a>
+          <figcaption><span>First Light at Larkspur Mere · made by OpenAI Codex</span></figcaption>
+        </figure>
+        <div class="pair">
+          <figure>
+            <a class="frame free" style="display:block" href="canvas/crystal-tarn.html"><img src="media/cv_crystal_tarn.jpg" alt="Sunrise over an alpine lake framed by two large trees" width="1600" height="900" loading="lazy"></a>
+            <figcaption><span>Dawn over the Crystal Tarn · made by Claude from the same prompt</span></figcaption>
+          </figure>
+          <figure>
+            <a class="frame free" style="display:block" href="canvas/the-last-vespers.html"><img src="media/cv_the_last_vespers.jpg" alt="A ruined abbey beside a loch at dusk with a full moon behind its window" width="1600" height="900" loading="lazy"></a>
+            <figcaption><span>The Last Vespers · made by OpenAI Codex · it moves</span></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
     <section class="plate" aria-labelledby="pst" id="studios">
       <div class="margin">
         <span class="pno">Try it</span>
@@ -453,7 +483,7 @@ footer{margin-top:clamp(56px,8vw,110px);padding-block:18px 36px;border-top:1px s
     <!-- Plate VI: how -->
     <section class="plate" aria-labelledby="p6">
       <div class="margin">
-        <span class="pno">Plate VII</span>
+        <span class="pno">Plate VIII</span>
         <h2 id="p6">How it works</h2>
         <p>Two pipelines share one data source. Both skills ship the same <code>dem.py</code>.</p>
       </div>

@@ -4,7 +4,7 @@
 
 **Real mountains, glass and paintings made with code and real elevation data. No image model.**
 
-Three Claude skills. Name any mountain on Earth and get an engraving, a woodcut, a photograph, or a painting of it. Or name any subject and watch it painted in oils, stroke by stroke.
+Four Claude skills. Name any mountain on Earth and get an engraving, a woodcut, a photograph, or a painting of it. Name any subject and watch it painted in oils, stroke by stroke. Or ask for a whole landscape as one HTML file that draws itself in the browser.
 
 <img src="docs/media/hero-orbit.gif" alt="Ararat drawn in moonlit ridgelines from real elevation data, orbiting slowly" width="840">
 
@@ -19,13 +19,14 @@ Three Claude skills. Name any mountain on Earth and get an engraving, a woodcut,
 
 ---
 
-It started as an attempt to recreate an AI-generated header of Mount Ararat with math instead of a model, drawn from the real mountain's elevation. From there it grew into three skills:
+It started as an attempt to recreate an AI-generated header of Mount Ararat with math instead of a model, drawn from the real mountain's elevation. From there it grew into four skills:
 
 | Skill | What it makes |
 |---|---|
 | **[procedural-terrain-art](skills/procedural-terrain-art)** | Any real mountain, range, canyon or island in six print styles, looping orbit videos, and a self-contained interactive studio page. |
 | **[procedural-realism](skills/procedural-realism)** | Photographic terrain (sky, haze, snow, lakes, forests, city lights, sun timelapses), a path tracer for glass and metal still lifes, and a painterly finisher for any image. |
 | **[procedural-painting](skills/procedural-painting)** | An original oil painting of any subject, composed in code and laid as simulated brush strokes with real pigment mixing and impasto, plus a film of the canvas being painted. |
+| **[procedural-canvas](skills/procedural-canvas)** | A whole landscape as one self-contained HTML file: Canvas and plain JavaScript, no images, no libraries, no network. The browser computes every pixel in a few seconds, and the mountain can be the real one, from elevation baked into the file. |
 
 Every terrain pixel comes from SRTM-derived elevation, numpy and physics. Nothing is downloaded except elevation tiles, and no generative model is involved at any step.
 
@@ -206,6 +207,31 @@ A Monte Carlo path tracer in plain numpy. Scenes are small JSON files: spheres, 
 </tr>
 </table>
 
+## One file, one landscape
+
+<img src="docs/media/cv_fuji_at_first_light.jpg" alt="Mount Fuji with snow in its gullies, mirrored in a still lake at dawn, a pine on the left and a red maple branch on the right: drawn by one HTML file" width="840">
+
+Each of these is a single HTML file of Canvas and plain JavaScript. It holds no image and loads nothing; open it and the browser computes the picture in 3 to 10 seconds, the same every time for the same `?seed=`. The Fuji above is the real mountain: the file carries elevation data for the ground its camera sees from Lake Kawaguchi, and the Sun stands where it was that morning; the bank, the trees and the weather are invented. **[Open the gallery](https://dogum.github.io/procedural-art/canvas/)** and watch them paint.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/cv_crystal_tarn.jpg" alt="Sunrise over an alpine lake framed by two large trees, mossy boulders and wildflowers in front"><br>Dawn over the Crystal Tarn · Claude</td>
+<td width="50%"><img src="docs/media/cv_rook_head.jpg" alt="A breaking green wave in front of a sea arch and a lighthouse on a headland"><br>The Lantern at Rook Head · OpenAI Codex</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/media/cv_the_last_vespers.jpg" alt="A ruined Gothic abbey beside a loch at dusk with a full moon behind its tracery window"><br>The Last Vespers · OpenAI Codex</td>
+<td width="50%"><img src="docs/media/cv_vesper_reach.jpg" alt="A cliff-top citadel with waterfalls falling to the sea at sunset"><br>Vesper Reach · OpenAI Codex</td>
+</tr>
+</table>
+
+The gallery started as a comparison. *Crystal Tarn* (Claude) and *Larkspur Mere* (OpenAI Codex) were made from the same prompt, word for word. Claude composed a painting in screen space and lit it afterwards; Codex built a small world in metres and rendered it, and its mountains are clearly the better ones:
+
+<img src="docs/media/cv_larkspur_mere.jpg" alt="First Light at Larkspur Mere: a snow-covered massif mirrored in a still green lake, a lone pine on an island" width="840">
+
+<img src="docs/media/cv_same_prompt_mountains.jpg" alt="The mountains of both pieces at full size: soft glowing ridges on the left, crisp snow, rock and cast shadows on the right" width="840">
+
+The four Codex pieces are kept exactly as generated, with credit. What both approaches teach (terrain as geometry in metres, water in linear light with Fresnel, refraction and absorption, each landform reflected about its own waterline, light shafts only where something breaks the light) is written up as the `procedural-canvas` skill, with a headless harness that renders a piece, times it and checks that a second render is identical, and `bake_dem.py`, which puts a real mountain into a file. *Fuji at first light* was made with it.
+
 ## Install
 
 ### Claude Code (recommended)
@@ -215,11 +241,11 @@ A Monte Carlo path tracer in plain numpy. Scenes are small JSON files: spheres, 
 /plugin install procedural-art@procedural-art
 ```
 
-All three skills install together. Updates arrive with `/plugin update`.
+All four skills install together. Updates arrive with `/plugin update`.
 
 ### Claude.ai, Cowork, cloud sessions
 
-1. Download `procedural-terrain-art.skill`, `procedural-realism.skill` and `procedural-painting.skill` from the [latest release](https://github.com/dogum/procedural-art/releases/latest).
+1. Download `procedural-terrain-art.skill`, `procedural-realism.skill`, `procedural-painting.skill` and `procedural-canvas.skill` from the [latest release](https://github.com/dogum/procedural-art/releases/latest).
 2. Open Claude.ai → Settings → Capabilities → Skills.
 3. Upload each file. Re-upload to update.
 
@@ -310,9 +336,10 @@ What works and what doesn't: light, atmosphere, glass, metal and real terrain at
 skills/
   procedural-terrain-art/     SKILL.md, scripts/, references/, assets/studio_template.html, evals/
   procedural-realism/         SKILL.md, scripts/, references/, scenes/*.json, evals/
+  procedural-canvas/          SKILL.md, scripts/ (render_headless.js, bake_dem.py), assets/ (a finished piece), references/
   procedural-painting/        SKILL.md, scripts/ (atelier.py: the paint simulator; stage.py; sitting.py; motion.py; repaint.py; tape.py), studies/*.py, references/
 evals/                        claude plugin eval cases (should-trigger, should-not-trigger)
-docs/                         GitHub Pages: the showcase, the Any mountain app (docs/app), the easel (docs/paint), five studios, media
+docs/                         GitHub Pages: the showcase, the Any mountain app (docs/app), the easel (docs/paint), the one-file landscapes (docs/canvas), five studios, media
 scripts/                      build-skills.sh (the Claude.ai packages), build-app.py (docs/app/engine.js), regression_terrain.py
 ```
 
@@ -324,7 +351,7 @@ The two terrain skills ship the same `scripts/dem.py`; the build refuses to pack
 claude plugin eval . --allow-tools Write Bash
 ```
 
-Four should-trigger cases render real drafts and have an LLM judge look at the PNG; four should-not-trigger cases (Blender settings, a Midjourney prompt, a QGIS how-to, a plain fact) assert neither skill fires. Each skill also carries skill-creator evals. See [evals/README.md](evals/README.md).
+Six should-trigger cases produce real drafts and have an LLM judge look at the result; six should-not-trigger cases (Blender settings, a Midjourney prompt, a QGIS how-to, a plain fact, real oil-paint advice, a three.js question) assert no skill fires. Each of the three Python skills also carries skill-creator evals. See [evals/README.md](evals/README.md).
 
 ## Contributing
 

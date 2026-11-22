@@ -111,6 +111,10 @@ def paint_watercolour(p, src, aov=None, planes=4, key=1.0, border=0.035, accents
     if aov:
         from repaint import load_aov
         A = load_aov(aov, W, H)
+        if float((A['hit'] * (1 - np.clip(A['water'], 0, 1)) > 0.5).mean()) < 0.002:
+            print("  the painter buffers show no land in this view: painting from the picture alone", flush=True)
+            A = None
+    if A is not None:
         hit = smoothstep(0.3, 0.7, A['hit'])
         sky = 1 - hit
         water = smoothstep(0.3, 0.7, A['water']) * hit

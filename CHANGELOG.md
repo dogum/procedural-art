@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Versions follow [semant
 
 ## [Unreleased]
 
+### procedural-canvas (new skill)
+- A whole landscape as one self-contained HTML file: Canvas 2D and plain JavaScript, no images, no libraries, no network, a seed in the address and a done flag for tools. `SKILL.md` gives the contract of the file and the order of work; `references/architecture.md` and `references/techniques.md` cover world-space terrain scanned front to back, runoff-carved gullies, cast shadows, linear-light water with Fresnel, Snell refraction and per-channel absorption, reflections about each landform's own waterline, swept-tube bark, light shafts through real occluders, and the traps.
+- `scripts/render_headless.js` renders a piece in headless Chromium, times it, reports page errors, saves a 1:1 crop and checks that a repeat render is identical.
+- `assets/fuji-at-first-light.html`, a finished piece to learn from: the real Mount Fuji from the north shore of Lake Kawaguchi, drawn as geometry from elevation baked into the file (188 KB, about 4 s), with the Sun where it stood at a stated time. `scripts/bake_dem.py` bakes any elevation cache for a given camera as a fan of depth profiles (curvature and refraction removed, tile spikes cleaned, 16-bit accuracy at 8 bits a sample).
+- Gallery at `docs/canvas/`: six pieces with their prompts. *Fuji at first light* was made here with the skill. *Dawn over the Crystal Tarn* was made by Claude; *First Light at Larkspur Mere*, *The Lantern at Rook Head*, *The Last Vespers* and *Vesper Reach* were made by OpenAI Codex models and are kept byte for byte as generated, with credit. Crystal Tarn and Larkspur Mere come from the same prompt.
+
 ### procedural-painting (new skill)
 - Original oil paintings of any subject, composed in code. A study script describes the picture in flat colour (numpy gradients and signed-distance shapes) and gives each mass a brush direction; `scripts/atelier.py` lays it as brush strokes on a toned canvas, back to front, big brushes first.
 - Pigment mixing: colours are 12-band reflectance spectra mixed on Kubelka-Munk absorption and scattering, so blue into wet yellow goes green and complements grey each other.
