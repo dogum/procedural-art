@@ -327,7 +327,7 @@ One CPU core:
 
 ## Limits
 
-What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures from the 3D stage hold up to half length, with a plain face, mitten-like hands and a few folds; separate fingers, a gaze, real drapery and likenesses are still out of reach. Watercolours get the paper, the transparency and the edges right, but backruns are drawn more than simulated, they are soft at full size, and a mountain painted without the renderer's buffers is split into planes by tone alone. The skills say so when a request lands there.
+What works and what doesn't: light, atmosphere, glass, metal and real terrain at a distance look right. Trees, houses and walls within about 60 m look rendered rather than photographed; city buildings are boxes with guessed heights; paintings soften fine detail on noisy sources; organic shapes like petals are out of reach for the path tracer. Paintings from imagination are only as good as their drawing: figures from the 3D stage hold up to half length, with a plain face, mitten-like hands and a few folds; separate fingers, a gaze, real drapery and likenesses are still out of reach. Watercolours get the paper, the transparency and the edges right, but the mottling inside a wash is soft at full size, and a mountain painted without the renderer's buffers is split into planes by tone alone. The skills say so when a request lands there.
 
 ## Repository layout
 
