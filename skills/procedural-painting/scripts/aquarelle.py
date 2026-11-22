@@ -31,6 +31,7 @@ numpy, scipy and pillow only (ffmpeg for the process film). See ../references/aq
 import os
 import subprocess
 import sys
+import zlib
 
 import numpy as np
 from PIL import Image
@@ -71,7 +72,7 @@ class _Mix:
 
 class _Paint:
     """One wash while it is wet: pigment in the water (a), pigment already down (s)."""
-    __slots__ = ('ks', 'a', 's', 'g', 'stain', 'crisp', 'name')
+    __slots__ = ('ks', 'a', 's', 'g', 'stain', 'crisp', 'name', 'fine')
 
 
 class Paper:
@@ -231,6 +232,7 @@ class Paper:
         held = float(np.clip(1 - 0.85 * wetness, 0.1, 0.9))                 # a drier brush leaves its pigment where it touches
         p.a, p.s = tot * (1 - held), tot * held
         p.crisp = (np.maximum(hard, damp) * 255).astype(np.uint8)         # what may show on the sheet, at full size
+        p.fine = []                                                        # changes made at full size (backruns): (slice, keep, add)
         self.wet_paints.append(p)
         self.w = np.maximum(self.w, water)
         self.d = np.maximum(self.d, np.clip(ms * 1.5, 0, 1))
@@ -270,60 +272,98 @@ class Paper:
             self.wash(m, color, strength=strength, wetness=water, name=kw.pop('name', 'drop'), **kw)
 
     def _backrun(self, m, water, bloom=1.0):
-        """A wetter touch in paint that has started to dry: the new water creeps out through the
-        damp wash and sweeps the pigment ahead of it. The middle is left pale; the pigment stops
-        where the water stops, in a dark fringe with a lobed, feathered outline. On paper that is
-        still running wet nothing of the kind happens (the touch just blends), and dry paper
-        does not carry the water at all."""
+        """A wetter touch in paint that has started to dry. The new water pushes out through the
+        damp wash. Its front advances fastest where it sticks out into fresh damp paper and where
+        the sheet's valleys lead it, and is held back where it is hemmed in, so it splits into
+        lobes on lobes; it stops when the water it brought has soaked into the area it has
+        covered. The pigment it sweeps up is left where the water stops: a thin dark line along
+        the whole front, sharp on the outside, and a pale middle. On paper that is still running
+        wet nothing of the kind happens (the touch just blends), and dry paper does not carry the
+        water at all. Worked at the sheet's own resolution, so the edge is as crisp as the
+        paper's tooth."""
         if bloom <= 0 or not self.wet_paints:
             return
-        px = self.px
-        ms = self._small(m)
+        H, W = self.H, self.W
         ready = smoothstep(0.03, 0.15, self.d) * (1 - smoothstep(0.32, 0.6, self.w))         # damp, no longer flooded
-        extra = np.clip(ms * water - self.w, 0, 1)
-        if float((extra * ready).max()) < 0.15:
+        extra_s = np.clip(self._small(m) * water - self.w, 0, 1)
+        if float((extra_s * ready).max()) < 0.15:
             return
-        # how far the water gets: further where the sheet lets it through, in lobes on lobes
-        r = self._hrng
-        lobes = 0.55 * np.abs(self._noise(self.hs, self.ws, 0.030, 2, rng=r, rh=512)) + 0.30 * np.abs(self._noise(self.hs, self.ws, 0.011, 2, rng=r, rh=768)) \
-            + 0.15 * np.abs(value_noise(self.hs, self.ws, 3.0 * px, self._trng))
-        reach = (9.0 + 26.0 * float(np.clip(water, 0, 1.5))) * px * bloom
-        src_ = (extra * ready > 0.15)
-        dist = ndi.distance_transform_edt(~src_).astype(F32)
-        R = (dist < reach * (0.35 + 1.1 * lobes) * self.perm.clip(0.6, 1.6)) & (ready > 0.2)
-        R = ndi.binary_fill_holes(ndi.binary_opening(R, iterations=1) | src_)
-        lab, _ = ndi.label(R)                                               # only water that is joined to the touch
-        R = np.isin(lab, np.unique(lab[src_])) & (lab > 0)
-        if R.sum() < 4:
+        ready_b = np.clip(self._big(ready), 0, 1)
+        extra = np.clip(m * water - self._big(self.w), 0, 1)
+        src = (extra * ready_b > 0.15) & (m > 0.5)
+        if src.sum() < 4:
             return
-        ys, xs = np.where(R)
-        pad = 3
-        y0, y1, x0, x1 = max(0, ys.min() - pad), min(self.hs, ys.max() + pad + 1), max(0, xs.min() - pad), min(self.ws, xs.max() + pad + 1)
-        sl = (slice(y0, y1), slice(x0, x1))
-        Rb = R[sl]
-        inside = ndi.distance_transform_edt(Rb).astype(F32)                 # distance to the edge of the bloom
-        gy, gx = np.gradient(ndi.gaussian_filter(inside, 1.0))
-        nrm = np.maximum(np.hypot(gx, gy), 1e-4)
-        slow = 0.42 * (0.12 + 0.88 * smoothstep(0.0, 3.5, inside)) * Rb     # outwards, slowing into the edge, where it piles up
-        ux, uy = -slow * gx / nrm, -slow * gy / nrm
-        steps = int(min(200, float(inside.max()) / 0.42 * 1.1 + 10))
-        swept = smoothstep(0.0, 3.0 * px, inside) * ready[sl]
+        reach = (9.0 + 26.0 * float(np.clip(water, 0, 1.5))) * H / 1000.0 * bloom          # pixels the water can get past the touch
+        ys, xs = np.nonzero(src)
+        pad = int(1.6 * reach) + 4
+        sl = (slice(max(0, ys.min() - pad), min(H, ys.max() + pad + 1)), slice(max(0, xs.min() - pad), min(W, xs.max() + pad + 1)))
+        R = src[sl].copy()
+        allowed = ready_b[sl] > 0.2
+        a_src = float(R.sum())
+        r_src = np.sqrt(a_src / np.pi)
+        target = a_src * ((r_src + 1.0 * reach) / r_src) ** 2
+        # what makes the front go: fresh damp paper ahead (it is screened inside a bay of its own
+        # water), the valleys of the sheet, how evenly the sheet was sized, its permeability
+        tooth = self._tooth_soft[sl]
+        perm = np.clip(self._big(self.perm)[sl], 0.5, 1.8)
+        sizing = np.exp(0.7 * self._bloom_fields()[0][sl])
+        lead = (1.3 - 0.6 * tooth) * perm * sizing
+        rng = np.random.default_rng([zlib.crc32(str(self.seed).encode()), 131, self.n_ops])     # its own stream: the rest of the sheet is unchanged
+        s1, s2 = max(1.5, 0.06 * reach), max(3.0, 0.25 * reach)
+        k8 = np.array([[0.7, 1, 0.7], [1, 0, 1], [0.7, 1, 0.7]], F32)
+        for _ in range(int(6 * reach) + 40):
+            if R.sum() >= target:
+                break
+            Rf = R.astype(F32)
+            free = (1 - ndi.gaussian_filter(Rf, s1)) * (1 - 0.75 * ndi.gaussian_filter(Rf, s2))
+            touch = ndi.convolve(Rf, k8, mode='constant')                      # how much of the water is next to it
+            front = (touch > 0) & ~R & allowed
+            if not front.any():
+                break
+            score = (free * lead * (0.35 + 0.65 * np.minimum(touch, 3) / 3) + 0.06 * np.maximum(touch - 3.5, 0))[front]
+            prob = np.clip(0.6 * score / max(float(score.max()), 1e-6), 0, 1)
+            grow = np.zeros_like(R)
+            grow[front] = rng.random(prob.size) < prob
+            R |= grow
+        R = ndi.binary_fill_holes(R)
+        Rs = smoothstep(0.38, 0.62, ndi.gaussian_filter(R.astype(F32), max(0.8, 1.3 * H / 1000)))   # surface tension rounds the finest teeth
+        R = Rs > 0.5
+        din = ndi.distance_transform_edt(R).astype(F32)                          # pixels in from the front
+        rf = max(0.8, 0.0024 * H)
+        line = np.exp(-np.maximum(din - 0.5, 0) / rf) * (din < 6 * rf) * Rs
+        line *= 0.8 + 0.4 * np.clip(0.5 + self._bloom_fields()[1][sl], 0, 1)     # it does not dry quite evenly along the front
+        area = max(float(Rs.sum()), 1.0)
+        sg = max(2.0, 0.3 * reach)
+        frac = float(np.clip(0.78 * bloom, 0, 0.92))
         for p in self.wet_paints:
-            lifted = (p.a[sl] + p.s[sl]) * swept * float(np.clip(0.78 * (1 - 0.8 * p.stain) * bloom, 0, 0.92))
-            if float(lifted.max()) <= 1e-6:
+            seen = (self._big(p.a + p.s) * (p.crisp.astype(F32) / 255))[sl]
+            for psl, keep, add in p.fine:                                       # (an earlier backrun here)
+                if psl == sl:
+                    seen = seen * keep + add
+            f = frac * (1 - 0.8 * p.stain) * Rs * smoothstep(0.1, 0.5, ready_b[sl])
+            lifted = seen * f
+            M = float(lifted.sum())
+            if M <= 1e-6:
                 continue
-            from_s = np.minimum(p.s[sl], lifted)
-            p.s[sl] -= from_s
-            p.a[sl] = np.maximum(p.a[sl] - (lifted - from_s), 0)
-            t = lifted.copy()
-            for _ in range(steps):
-                self._advect(t, ux, uy)
-            cap = 5.0 * float(np.percentile(lifted[lifted > 0], 90))         # a fringe, not beads: what piles too high spreads along it
-            over = np.maximum(t - cap, 0)
-            t = np.minimum(t, cap) + ndi.gaussian_filter(over, 2.5) * Rb
-            p.s[sl] += ndi.gaussian_filter(t, 0.6)                           # it dries where it was left: the fringe
-        self.w[sl] = np.maximum(self.w[sl], 0.30 * Rb)
+            local = ndi.gaussian_filter(lifted, sg) / np.maximum(ndi.gaussian_filter(Rs, sg), 1e-3)   # what was lifted near each bit of front
+            ring = local * line
+            norm = float(ring.sum())
+            add = 0.15 * M / area * Rs                                           # not all of it reaches the edge
+            if norm > 1e-9:
+                add = add + ring * (0.85 * M / norm)
+            p.fine.append((sl, (1 - f).astype(F32), add.astype(F32)))
+        Rsm = self._small(np.pad(Rs, ((sl[0].start, H - sl[0].stop), (sl[1].start, W - sl[1].stop))))
+        self.w = np.maximum(self.w, 0.30 * Rsm)
         self._frame()
+
+    def _bloom_fields(self):
+        """Two fields for backruns, made once per sheet from their own random stream (so a
+        backrun changes nothing else): how unevenly the sheet was sized, and how unevenly a
+        front dries along its length."""
+        if getattr(self, '_bf', None) is None:
+            r = np.random.default_rng([zlib.crc32(str(self.seed).encode()), 137])
+            self._bf = (self._noise(self.H, self.W, 0.012, 2, rng=r, rh=768), self._noise(self.H, self.W, 0.012, 2, rng=r, rh=768))
+        return self._bf
 
     def stroke(self, lines, color, size=0.008, strength=1.0, dry=0.0, wetness=0.3, taper=0.6, granulate=None,
                staining=None, name=None):
@@ -472,6 +512,55 @@ class Paper:
         asm = self._small(a)
         self.dep_s += asm[..., None] * (ks if ks.ndim == 1 else np.stack([self._small(ks[..., b]) for b in range(NB)], -1))
 
+    def _onsheet(self, p, tot):
+        """A wash's pigment at full size: enlarged from the water grid, cut to the brushed edge,
+        the rim drawn in at full resolution, and what the backruns did."""
+        crisp = p.crisp.astype(F32) / 255
+        a = self._big(tot) * crisp
+        a = self._rim(a, crisp)
+        for sl, keep, add in p.fine:
+            a[sl] = a[sl] * keep + add
+        return a
+
+    def _rim(self, a, crisp):
+        """The dark edge of a wash, at the sheet's own resolution. On the water grid the pigment that
+        piled up at a drying edge is spread over several cells; on paper it is a thin line, sharp
+        on the outside and fading inwards over a millimetre or two. What lies above the wash's
+        own level near a dry edge is gathered (as much as there is per length of edge) and laid
+        again as that line."""
+        H = self.H
+        B = max(4, int(round(0.013 * H)))                      # how far in the water grid smeared the rim
+        r = max(0.7, 0.0011 * H)                               # how far in the line fades on paper
+        inside = crisp > 0.5
+        ys = np.flatnonzero(inside.any(1))
+        xs = np.flatnonzero(inside.any(0))
+        if len(ys) < 2 * B or len(xs) < 2 * B:
+            return a
+        pad = 2
+        sl = (slice(max(0, ys[0] - pad), min(H, ys[-1] + pad + 1)), slice(max(0, xs[0] - pad), min(self.W, xs[-1] + pad + 1)))
+        ins = inside[sl]
+        d = ndi.distance_transform_edt(ins).astype(F32)        # pixels from the edge, inside
+        core = d > B
+        if not core.any():
+            return a
+        dc, (iy, ix) = ndi.distance_transform_edt(~core, return_indices=True)
+        ab = a[sl]
+        level = ab[iy, ix]                                     # the wash's own level, just inside the rim
+        band = ins & (d <= B) & (dc <= 2 * B)                  # (not in shapes too thin to have a level of their own)
+        e = np.where(band, np.maximum(ab - level, 0), 0).astype(F32)
+        if float(e.max()) <= 1e-6:
+            return a
+        sg = 0.8 * B
+        per = ndi.gaussian_filter(e, sg) / np.maximum(ndi.gaussian_filter(band.astype(F32), sg), 1e-3) * B   # pigment per length of edge
+        k = np.arange(1, B + 1, dtype=F32)
+        norm = float(np.exp(-(k - 0.5) / r).sum())
+        line = per * np.exp(-(np.maximum(d, 0.5) - 0.5) / r) / norm
+        out = ab.copy()
+        out[band] = (ab - e + 0.25 * e + 0.75 * line)[band]
+        a = a.copy()
+        a[sl] = out
+        return a
+
     def dry(self):
         """Let the sheet dry (a hairdryer): the water finishes moving, every wash settles where
         it is, and what is painted next goes on dry paper with hard edges."""
@@ -483,7 +572,7 @@ class Paper:
             tot = p.a + p.s
             if tot.max() <= 1e-6:
                 continue
-            a = self._big(tot) * (p.crisp.astype(F32) / 255)
+            a = self._onsheet(p, tot)
             ks = p.ks if p.ks.ndim == 1 else np.stack([self._big(p.ks[..., b]) for b in range(NB)], -1)
             self._deposit(a, ks, p.g)
         self.wet_paints = []
@@ -511,7 +600,7 @@ class Paper:
         if self.wet_paints:
             ks = ks.copy()
             for p in self.wet_paints:
-                a = self._big(p.a + p.s) * (p.crisp.astype(F32) / 255)
+                a = self._onsheet(p, p.a + p.s)
                 ks += a[..., None] * (p.ks if p.ks.ndim == 1 else np.stack([self._big(p.ks[..., b]) for b in range(NB)], -1))
         out = np.empty((self.H, self.W, 3), F32)
         for y0 in range(0, self.H, 256):                                 # in bands, to keep memory down

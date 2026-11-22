@@ -60,9 +60,9 @@ python $S/aquarelle_repaint.py --in photo.png --out watercolour.png [--height 12
        [--aov work/NAME/bands_WxH/aov] [--planes 4] [--key 1.0] [--border 0.035] [--accents 1.0] [--film f.mp4]
 ```
 
-It works in a watercolourist's order: the lights are reserved as bare paper (snow, cloud tops, sparkle), the sky goes on wet paper in one wash, the land is a few flat washes laid from each skyline down so that nearer planes are the sum of the layers behind them, then one or two smaller washes for shadow shapes and darks, and a few dry-brush accents. Each wash is given exactly the absorption the picture still lacks there, so the layers add up to the picture's colour with no opaque paint.
+It works in a watercolourist's order: the lights are reserved as bare paper (snow, cloud tops, sparkle), the sky goes on wet paper in one wash, the land is a few flat washes laid from each skyline down so that nearer planes are the sum of the layers behind them, then a wash for the shadow shapes and a smaller one for the darks, and a few long dry-brush strokes that draw the slopes. Each wash is given exactly the absorption the picture still lacks there, so the layers add up to the picture's colour with no opaque paint.
 
-With `--aov` (the painter buffers of a `pbr_terrain.py --aov` render of the same view) the planes are the real ranges, split where the depth jumps, far ranges granulate, snow and cloud are reserved from the buffers and the accents run down the real fall lines. Without it the sky is the calm region hanging from the top edge and the planes are steps of tone. `--border 0` paints to the edge of the sheet; `--key 0` keeps the picture's own values. About 40 s at 2400×1000.
+With `--aov` (the painter buffers of a `pbr_terrain.py --aov` render of the same view) the planes are the real ranges, split where the depth jumps, far ranges granulate, snow and cloud are reserved from the buffers, the shadow shapes are the faces turned from the light (which way the light comes from is read off the picture: how bright each slope is for the way it faces), and the dry-brush strokes start on ridges and gullies and follow the real fall lines, or the line between a lit face and its shadow. Without it the shadows are only where the picture is clearly darker than its plane. Without it the sky is the calm region hanging from the top edge and the planes are steps of tone. `--border 0` paints to the edge of the sheet; `--key 0` keeps the picture's own values. About 40 s at 2400×1000.
 
 ## Pigments
 
@@ -72,15 +72,17 @@ Granulating pigments settle into the paper's valleys and give a speckled wash: u
 
 - **Layers.** Absorption (K/S in 12 bands, atelier's pigment tables) adds up over the paper's own, so a yellow wash under a blue one is green and two layers of one colour are deeper than one.
 - **Water.** A surface film and dampness in the sheet. Water levels out and soaks only through damp paper; dry paper beside a wash is a wall. Rims and isolated touches dry first.
-- **Pigment in the water.** It wanders through deep water (wet-in-wet), is carried from deeper to shallower water by a scheme that conserves it, so it collects where the flow stops (the dark rim, the edge of a backrun), and settles as the film thins, heavy pigments first. A drier brush leaves most of its pigment where it touches.
+- **Pigment in the water.** It wanders through deep water (wet-in-wet), is carried from deeper to shallower water by a scheme that conserves it, so it collects where the flow stops, and settles as the film thins, heavy pigments first. A drier brush leaves most of its pigment where it touches.
+- **The rim, at full size.** What piles up at a drying edge is spread over a few cells of the water grid; on the sheet it is gathered (as much as there is per length of edge) and laid again as a thin line, sharp outside and fading in over a millimetre or two.
+- **Backruns.** A wetter touch in a wash that has started to dry sends a front out through the damp paint, worked at the sheet's own resolution. It advances fastest where it sticks out into fresh damp paper and where the paper's valleys and sizing lead it, is held back inside its own bays, and has its finest teeth rounded off, so it splits into lobes on lobes; it stops when its water has soaked into the area it covers. What it sweeps up is left along the whole front as a thin dark line (spread by what was lifted nearby, so it never pools), with a pale middle. It has its own random stream: adding or removing a backrun changes nothing else on the sheet.
 - **Rewetting.** Water landing on paint that is down but not dry lifts part of it again, less for staining pigments.
 - **Paper.** A height field. Granulation and dry brush read it; a wash's edge on dry paper follows it slightly.
 
 ## Limits
 
-- The water moves on a grid about half the picture's size, so a rim is two or three pixels wide and soft at 1:1.
-- A backrun's outline is drawn from noise where the water would stop, not found by letting the water run; the fringe can pool into blobs in its hollows.
-- `aquarelle_repaint.py` simplifies hard: a few flat washes. Fine texture (trees, rock, ripples) is gone, shadow shapes are soft at 1:1, and without `--aov` a plane is only a step of tone, so it can cut across forms.
+- The water moves on a grid about half the picture's size. Rims and backruns are redrawn at full size, but wet-in-wet blends and the mottling inside a wash are still that grid's, enlarged.
+- A backrun's front grows by a rule (screening, the paper, surface tension), not by solving the flow; its fringe is evenly dark along its length, where a real one varies more, and its pale middle has none of the fine veins a real one often has.
+- `aquarelle_repaint.py` simplifies hard: a few flat washes. Fine texture (trees, rock, ripples) is gone, and without `--aov` a plane is only a step of tone, so it can cut across forms. The dry-brush strokes are few and clean; they suggest the drawing of a slope rather than describe it.
 - A brush stroke is one clean shape: no split hairs or side-loaded brush except in dry brush.
 - No salt, wax resist, masking-fluid edges or spatter physics (spatter is small drops).
 - Drawing is as hard as in `atelier`: the engine paints what the masks say.

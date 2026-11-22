@@ -98,6 +98,100 @@ def find_sky(src):
     return sky.astype(F32)
 
 
+def shadow_shapes(Ld, level, land, fx, fy, steep, H):
+    """The faces turned away from the light, as a few clean shapes. Where the slopes are known
+    (painter buffers), which way the light comes from is read off the picture itself: the
+    brightness of the land against the direction each slope faces. A face is in shade where it
+    faces away and the picture agrees that it is darker than its own range."""
+    m = land > 0.5
+    if m.sum() < 64:
+        return np.zeros_like(Ld)
+    # brightness against the plane it belongs to
+    rel = np.zeros_like(Ld)
+    for i in np.unique(level[m]):
+        pm = (m & (level == i)).astype(F32)
+        if pm.sum() < 16:
+            continue
+        mean = blur(Ld * pm, 0.05 * H) / np.maximum(blur(pm, 0.05 * H), 1e-3)
+        rel += pm * (Ld / np.maximum(mean, 1e-3) - 1)
+    score = -rel
+    if steep is not None:
+        sel = m & (steep > 0.3)
+        if sel.sum() > 64:
+            X = np.stack([fx[sel] * steep[sel], fy[sel] * steep[sel], np.ones(sel.sum(), F32)], 1)
+            coef, *_ = np.linalg.lstsq(X, rel[sel], rcond=None)               # how bright a slope is for the way it faces
+            facing = (coef[0] * fx + coef[1] * fy) * np.clip(steep, 0, 1.5)
+            sd = float(np.std(facing[sel])) + 1e-6
+            score = 0.5 * score / (float(np.std(rel[m])) + 1e-6) - 0.5 * facing / sd
+        score = score * smoothstep(0.15, 0.35, steep)                          # a flat plain has no faces
+    score = blur(score, 0.004 * H)
+    faces = m & (steep > 0.3) if steep is not None else m
+    if faces.sum() < 64:
+        return np.zeros_like(Ld)
+    cut = np.percentile(score[faces], 55)
+    sh = (score > cut) & faces
+    sh = ndi.binary_opening(sh, iterations=max(1, int(0.002 * H)))
+    lab, n = ndi.label(sh)
+    if n:
+        sizes = ndi.sum(sh, lab, range(1, n + 1))
+        sh = np.isin(lab, 1 + np.flatnonzero(sizes > 0.0004 * sh.size))       # shapes, not speckle
+    return blur(sh.astype(F32), 0.0012 * H)
+
+
+def draw_lines(want, fx, fy, src, rng, n, H, W):
+    """A few long strokes that draw the land: each starts where `want` is high (ridges, gullies)
+    and follows the fall lines up and down, as far as the land keeps wanting it, then lifts."""
+    pr = blur(want, 0.004 * H).ravel().astype(np.float64)
+    pr = np.maximum(pr, 0) ** 2
+    if pr.sum() <= 0:
+        return [], [], []
+    taken = np.zeros((H, W), bool)
+    gx_, gy_ = blur(fx, 0.02 * H), blur(fy, 0.02 * H)                         # the broad fall of the land, not every wrinkle
+    lines, cols, sizes = [], [], []
+    tries = 0
+    while len(lines) < n and tries < 30 * n:
+        tries += 1
+        j = int(rng.choice(pr.size, p=pr / pr.sum()))
+        y0, x0 = divmod(j, W)
+        if taken[y0, x0]:
+            continue
+        L = rng.uniform(0.08, 0.2) * H
+        step = 0.006 * H
+        pts = []
+        for sgn in (-1, 1):                                                  # up the slope, then down
+            px_, py_ = float(x0), float(y0)
+            run = [(px_, py_)]
+            prev = None
+            for _ in range(int(L * (0.35 if sgn < 0 else 0.65) / step)):
+                ix, iy = int(np.clip(px_, 0, W - 1)), int(np.clip(py_, 0, H - 1))
+                d = np.array([gx_[iy, ix], gy_[iy, ix]], F32)
+                nd = float(np.hypot(*d))
+                if nd < 1e-3 or want[iy, ix] < 0.02:
+                    break
+                d = d / nd
+                if prev is None:
+                    d = d if d[1] >= 0 else -d                                # a fall line goes down the picture
+                else:
+                    d = d if d @ prev >= 0 else -d                           # and does not turn back on itself
+                    d = 0.75 * prev + 0.25 * d                               # a brush keeps its direction
+                    d = d / (float(np.hypot(*d)) + 1e-6)
+                prev = d
+                px_, py_ = px_ + sgn * d[0] * step, py_ + sgn * d[1] * step
+                run.append((px_, py_))
+            pts = run[::-1] if sgn < 0 else pts + run[1:]
+        if len(pts) < 12:                                                    # a stroke, not a tick
+            continue
+        P = np.array(pts)
+        P += rng.normal(0, 0.0005 * H, P.shape)                               # a hand, not a plotter
+        lines.append([(x / H, y / H) for x, y in P])
+        yy, xx = int(np.clip(P[:, 1].mean(), 0, H - 1)), int(np.clip(P[:, 0].mean(), 0, W - 1))
+        cols.append(np.clip(src[yy, xx] * 0.72, 0, 1))
+        sizes.append(rng.uniform(0.003, 0.009))
+        for x, y in P.astype(int):                                           # keep strokes apart
+            taken[max(0, y - int(0.03 * H)):y + int(0.03 * H), max(0, x - int(0.04 * H)):x + int(0.04 * H)] = True
+    return lines, cols, sizes
+
+
 def paint_watercolour(p, src, aov=None, planes=4, key=1.0, border=0.035, accents=1.0):
     """Lay the picture `src` (H x W x 3, 0..1) on the Paper p. aov: folder of painter buffers."""
     H, W, hs, ws = p.H, p.W, p.hs, p.ws
@@ -205,8 +299,26 @@ def paint_watercolour(p, src, aov=None, planes=4, key=1.0, border=0.035, accents
              hand=0.9 if i < n_lev - 1 else 0.6)
         p.dry()
 
-    # ---- 3. the darks: a smaller wash where the picture is darker than its plane
-    for name, rad, over, g in (('shadow shapes', 0.007, 1.10, 0.5), ('darks', 0.003, 1.22, 0.3)):
+    # ---- 3. shadow shapes: the faces turned from the light, as a few flat washes with hard tops
+    Ld = blur(L, 0.004 * H)
+    if A is not None:
+        fx, fy = blur(A['fx'], 0.01 * H), blur(A['fy'], 0.01 * H)
+        steep = A['slope'] / (np.percentile(A['slope'][land > 0.5], 90) + 1e-6)
+    else:
+        ang = image_flow(src, 0.012 * H)
+        fx, fy = np.cos(ang), np.sin(ang)
+        steep = None
+    # (without buffers nothing says which way a slope faces, and tone alone breaks a picture into
+    # blotches: then the shadows are only where the picture is clearly darker than its plane)
+    shade = shadow_shapes(Ld, level, land, fx, fy, steep, H) if A is not None else np.zeros((H, W), F32)
+    sm = shade * keep * sheet
+    if sm.mean() > 0.002:
+        Tf = np.stack([blur(T[..., b], 0.004 * hs) for b in range(NB)], -1)
+        sms = small(sm) > 0.5
+        wash(sm, np.where(sms[..., None], np.maximum(Tf, put * 1.6), put), 0.55, 'shadow shapes', wetness=0.55, vary=0.18, settle=3, hand=0.5)
+        p.dry()
+    # ---- 4. the darks: a smaller wash where the picture is darker still
+    for name, rad, over, g in ((('shadow shapes', 0.007, 1.10, 0.5),) if A is None else ()) + (('darks', 0.003, 1.22, 0.3),):
         Tf = np.stack([blur(T[..., b], rad * hs) for b in range(NB)], -1)
         base = np.maximum(put.mean(-1), 0.02)
         more = (Tf.mean(-1) - over * base) / base
@@ -216,44 +328,34 @@ def paint_watercolour(p, src, aov=None, planes=4, key=1.0, border=0.035, accents
             wash(dm, np.where((small(dm) > 0.5)[..., None], np.maximum(Tf, put), put), g, name, wetness=0.5, vary=0.15, settle=3, hand=0.4)
             p.dry()
 
-    # ---- 4. dry brush: a few accents down the slopes, and across the water
+    # ---- 5. dry brush: a few long strokes that draw the slopes, down the fall lines
     rng = np.random.default_rng([p.seed, 5])
-    Ld = blur(L, 0.004 * H)
+    gully = smoothstep(0.004, 0.02, blur(Ld, 0.012 * H) - Ld)                # the dark lines of gullies and ravines
+    sb = blur(shade, 0.003 * H)
+    edge = smoothstep(0.08, 0.3, sb * (1 - sb) * 4) if shade.max() > 0 else 0 * Ld   # where a lit face turns into shade: a ridge
     if A is not None:
-        fx, fy = blur(A['fx'], 0.01 * H), blur(A['fy'], 0.01 * H)
-        want = land * keep * sheet * smoothstep(0.25, 0.6, A['slope'] / (np.percentile(A['slope'][land > 0.5], 90) + 1e-6)) * (0.3 + 0.7 * A['easel'])
+        want = land * keep * sheet * smoothstep(0.25, 0.6, steep) * (0.3 + 0.7 * A['easel']) * (0.05 + gully + 1.5 * edge)
     else:
-        ang = image_flow(src, 0.012 * H)
-        fx, fy = np.cos(ang), np.sin(ang)
         gy_, gx_ = np.gradient(Ld)
         tex = blur(np.hypot(gx_, gy_), 0.01 * H)
-        want = land * keep * sheet * smoothstep(0.5, 1.5, tex / (np.percentile(tex, 75) + 1e-6)) * smoothstep(0.75, 0.4, Ld)
-    want = want * (blur(sheet, 0.04 * H) > 0.97)                             # accents stay inside the sketch
-    n_acc = int(30 * accents * W / H)
-    pr = want.ravel().astype(np.float64)
-    if pr.sum() > 0:
-        idx = rng.choice(pr.size, size=min(n_acc, int((pr > 0.05).sum())), replace=False, p=pr / pr.sum())
-        lines, cols, sizes = [], [], []
-        for j in idx:
-            y0, x0 = divmod(int(j), W)
-            px_, py_ = float(x0), float(y0)
-            pts = [(px_ / H, py_ / H)]
-            ln = rng.uniform(0.03, 0.09) * H
-            for _ in range(6):
-                ix, iy = int(np.clip(px_, 0, W - 1)), int(np.clip(py_, 0, H - 1))
-                d = np.array([fx[iy, ix], fy[iy, ix]])
-                d = d / (np.hypot(*d) + 1e-6)
-                px_, py_ = px_ + d[0] * ln / 6, py_ + d[1] * ln / 6
-                pts.append((px_ / H, py_ / H))
-            lines.append(pts)
-            cols.append(np.clip(src[y0, x0] * 0.7, 0, 1))
-            sizes.append(rng.uniform(0.006, 0.014))
-        # grouped by tone, so each group is one loading of the brush
-        order = np.argsort([c @ LUM for c in cols])[::-1]
-        for part in np.array_split(order, 4):
+        want = land * keep * sheet * smoothstep(0.5, 1.5, tex / (np.percentile(tex, 75) + 1e-6)) * smoothstep(0.75, 0.4, Ld) * (0.2 + gully + edge)
+    want = want * (blur(sheet, 0.04 * H) > 0.97)                             # strokes stay inside the sketch
+    want = want * smoothstep(0.01 * H, 0.025 * H, ndi.distance_transform_edt((land > 0.5) & (keep > 0.5)))   # and off the skyline and the snow
+    if shade.max() > 0:                                                       # along a ridge: the line between a lit face and its shadow
+        sy_, sx_ = np.gradient(blur(shade, 0.008 * H))
+        tx, ty = -sy_, sx_
+        tn = np.hypot(tx, ty) + 1e-6
+        tx, ty = tx / tn, ty / tn
+        flip = np.where(tx * fx + ty * fy < 0, -1.0, 1.0)
+        wr = blur(edge, 0.006 * H)
+        fx, fy = (1 - wr) * fx + wr * tx * flip, (1 - wr) * fy + wr * ty * flip
+    lines, cols, sizes = draw_lines(want, fx, fy, src, rng, int(9 * accents * W / H), H, W)
+    if lines:
+        order = np.argsort([c @ LUM for c in cols])[::-1]                    # grouped by tone: each group one loading of the brush
+        for part in np.array_split(order, 3):
             if len(part):
                 c = np.mean([cols[k] for k in part], 0)
-                p.stroke([lines[k] for k in part], c, size=[sizes[k] for k in part], strength=0.3, dry=0.7, name='dry brush')
+                p.stroke([lines[k] for k in part], c, size=[sizes[k] for k in part], strength=0.45, dry=0.6, taper=0.8, name='dry brush')
     if water.max() > 0:
         ys, xs = np.where((water > 0.5) & (keep > 0.5) & (sheet > 0.5))
         if len(ys):
